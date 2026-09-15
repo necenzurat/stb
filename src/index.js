@@ -1,5 +1,7 @@
 const UPSTREAM_HOST = "info.stb.ro";
 const UPSTREAM_ORIGIN = `https://${UPSTREAM_HOST}`;
+const UPSTREAM_API_PATH = "/api/web/v2-6";
+const PROXY_PATH = "/api";
 
 const HOP_HEADERS = new Set([
   "connection",
@@ -42,7 +44,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (url.pathname.startsWith("/api/")) {
+    if (url.pathname.startsWith(PROXY_PATH + "/")) {
       if (request.method === "OPTIONS") {
         return new Response(null, {
           status: 204,
@@ -55,7 +57,8 @@ export default {
         });
       }
 
-      const upstreamUrl = new URL(url.pathname + url.search, UPSTREAM_ORIGIN);
+      const upstreamPath = url.pathname.slice(PROXY_PATH.length);
+      const upstreamUrl = new URL(UPSTREAM_API_PATH + upstreamPath + url.search, UPSTREAM_ORIGIN);
       const upstreamHeaders = buildProxyHeaders(request.headers);
       const hasBody = !["GET", "HEAD"].includes(request.method);
 

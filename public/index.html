@@ -525,10 +525,19 @@
   </aside>
 
   <script>
-    const BASE = "/api/web/v2-6";
+    const BASE = "/api";
     const APP_KEY = "gcALgRyZHC,qFonZ=Jde";
-    const CITY = { lat: 44.4353308, lng: 26.0996553, zoom: 17 };
-    const MIN_ZOOM = 10;
+    const CITY = { lat: 44.4353308, lng: 26.0996553 };
+
+    // Map zoom configuration
+    const MAP_ZOOM = Object.freeze({
+      initial: 17,
+      minimum: 10,
+      maximum: 18,
+      fitBoundsMaximum: 14,
+      routeOverviewReduction: 3,
+    });
+
     const LS_APP = "appId";
     const LS_TOKEN = "userInfo";
 
@@ -607,7 +616,7 @@ message ResponseStopDTO {
 `;
 
     const NEAREST_STOPS = 15;
-    const VEHICLE_POLL_MS = 10000;
+    const VEHICLE_POLL_MS = 5000;
     const hudEl = document.getElementById("hud");
     const statusEl = document.getElementById("status");
     const backBtn = document.getElementById("backBtn");
@@ -832,7 +841,7 @@ message ResponseStopDTO {
       syncMapPadding();
       map.fitBounds(bounds, {
         padding: 32,
-        maxZoom: maxZoom || 16,
+        maxZoom: maxZoom || MAP_ZOOM.fitBoundsMaximum,
         duration: prefersReducedMotion() ? 0 : 500,
       });
     }
@@ -1780,7 +1789,7 @@ message ResponseStopDTO {
 
     async function selectLine(line) {
       if (drawingLine) return;
-      const startZoom = map ? map.getZoom() : CITY.zoom;
+      const startZoom = map ? map.getZoom() : MAP_ZOOM.initial;
       drawingLine = true;
       selectedLineId = line.id;
       selectedLine = line;
@@ -1823,7 +1832,7 @@ message ResponseStopDTO {
         }
         const ok = drawRoutePaths(paths, line.color || detail.color, { fit: false });
         map.easeTo({
-          zoom: Math.max(MIN_ZOOM, startZoom - 3),
+          zoom: Math.max(MAP_ZOOM.minimum, startZoom - MAP_ZOOM.routeOverviewReduction),
           duration: prefersReducedMotion() ? 0 : 400,
         });
         if (!ok) {
@@ -1845,13 +1854,13 @@ message ResponseStopDTO {
     }
 
     async function loadStops() {
-      if (map.getZoom() < MIN_ZOOM) {
+      if (map.getZoom() < MAP_ZOOM.minimum) {
         if (pathStopsOverride || selectedLineId) return;
-        setStatus("Zoom in to " + MIN_ZOOM + "+ to load stops (now " + Math.round(map.getZoom()) + ")", "warn");
+        setStatus("Zoom in to " + MAP_ZOOM.minimum + "+ to load stops (now " + Math.round(map.getZoom()) + ")", "warn");
         clearStops();
         lastStops = [];
         setLinesCount("Zoom in");
-        setLinesListMessage("Zoom in to " + MIN_ZOOM + "+ to load nearby lines.");
+        setLinesListMessage("Zoom in to " + MAP_ZOOM.minimum + "+ to load nearby lines.");
         return;
       }
       const gen = ++fetchGen;
@@ -2042,9 +2051,9 @@ message ResponseStopDTO {
         container: "map",
         style: "https://tiles.openfreemap.org/styles/liberty",
         center: [CITY.lng, CITY.lat],
-        zoom: CITY.zoom,
-        minZoom: MIN_ZOOM,
-        maxZoom: 19,
+        zoom: MAP_ZOOM.initial,
+        minZoom: MAP_ZOOM.minimum,
+        maxZoom: MAP_ZOOM.maximum,
         pitchWithRotate: false,
         attributionControl: false,
       });
@@ -2070,7 +2079,7 @@ message ResponseStopDTO {
       setStatus("Requesting location…");
       const loc = await locate();
       setUserLoc(loc.lat, loc.lng, loc.acc);
-      map.jumpTo({ center: [loc.lng, loc.lat], zoom: CITY.zoom });
+      map.jumpTo({ center: [loc.lng, loc.lat], zoom: MAP_ZOOM.initial });
       map.resize();
       if (loc.fallback) setStatus("Location fallback: București center (" + loc.reason + ")", "warn");
 
@@ -2079,7 +2088,7 @@ message ResponseStopDTO {
         moveTimer = setTimeout(loadStops, 250);
       });
 
-      if (map.getZoom() < MIN_ZOOM) map.setZoom(MIN_ZOOM);
+      if (map.getZoom() < MAP_ZOOM.minimum) map.setZoom(MAP_ZOOM.minimum);
       const bootHashId = lineIdFromHash();
       if (bootHashId) selectedLineId = bootHashId;
       window.addEventListener("hashchange", () => {

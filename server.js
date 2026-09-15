@@ -7,6 +7,8 @@ const path = require("path");
 
 const PORT = Number(process.env.PORT) || 8001;
 const UPSTREAM_HOST = "info.stb.ro";
+const UPSTREAM_API_PATH = "/api/web/v2-6";
+const PROXY_PATH = "/api";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
 const MIME = {
@@ -47,7 +49,7 @@ function proxyApi(req, res) {
     {
       hostname: UPSTREAM_HOST,
       port: 443,
-      path: req.url,
+      path: UPSTREAM_API_PATH + req.url.slice(PROXY_PATH.length),
       method: req.method,
       headers: { ...filterHeaders(req.headers), host: UPSTREAM_HOST },
     },
@@ -95,7 +97,7 @@ function servePublic(req, res) {
 
 const server = http.createServer((req, res) => {
   const url = req.url || "/";
-  if (url.startsWith("/api/")) {
+  if (url.startsWith(PROXY_PATH + "/")) {
     proxyApi(req, res);
     return;
   }
