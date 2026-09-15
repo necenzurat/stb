@@ -1,0 +1,16 @@
+{
+  "name": "ratb",
+  "main": "src/index.js",
+  "compatibility_date": "2024-09-23",
+  "account_id": "e32a3cde987ba8d200a64c64a66bad8f",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "routes": [
+    {
+      "pattern": "stb.nece.ro",
+      "custom_domain": true
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "ratb",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bucharest public transit app (STB)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}
