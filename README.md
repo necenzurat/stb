@@ -1,4 +1,4 @@
-# STB
+# stb.nece.ro 
 
 An independent, map-first view of Bucharest public transport. It is designed
 for the quick question at a stop: which lines are nearby, where do they go,
