@@ -1,0 +1,68 @@
+/* ==========================================================================
+   Design tokens
+   The single source of truth for color, type, space, radius, shadow and
+   motion. Every other stylesheet consumes these; nothing hard-codes a value.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* --- Surfaces & ink ------------------------------------------------ */
+  --background: #fafafa;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+
+  /* --- Accent -------------------------------------------------------- */
+  --accent: #0052ff;
+  --accent-secondary: #4d7cff;
+  --accent-foreground: #ffffff;
+  --ring: #0052ff;
+
+  /* --- Status -------------------------------------------------------- */
+  --err: #dc2626;
+  --warn: #b45309;
+  --ok: #047857;
+
+  /* --- Type ---------------------------------------------------------- */
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Calistoga", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* --- Radius -------------------------------------------------------- */
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* --- Shadow -------------------------------------------------------- */
+  --shadow-sm: 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-md: 0 4px 6px rgb(15 23 42 / 0.07);
+  --shadow-lg: 0 10px 15px rgb(15 23 42 / 0.08);
+  --shadow-xl: 0 20px 25px rgb(15 23 42 / 0.1);
+  --shadow-accent: 0 4px 14px rgb(0 82 255 / 0.25);
+  --shadow-accent-lg: 0 8px 24px rgb(0 82 255 / 0.35);
+
+  /* --- Gradients ----------------------------------------------------- */
+  --gradient-accent: linear-gradient(to right, var(--accent), var(--accent-secondary));
+  --gradient-accent-diag: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+
+  /* --- Motion -------------------------------------------------------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 200ms;
+  --dur-base: 300ms;
+  --dur-slow: 700ms;
+
+  /* --- Layout -------------------------------------------------------- */
+  --hud-width: 372px;
+  --hud-gap: 12px;
+
+  /* Runtime values written by js/app.js. Declared here so every consumer
+     resolves to a real length before the first paint. */
+  --hud-stack: 0px;
+  --sheet-y: 0px;
+}
