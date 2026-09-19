@@ -1146,10 +1146,6 @@
   outline-offset: 1px;
 }
 
-.vehicle-no.is-dim {
-  opacity: 0.42;
-}
-
 /* --- Map controls ---------------------------------------------------- */
 
 .maplibregl-ctrl-group {

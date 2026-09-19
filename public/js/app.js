@@ -997,19 +997,14 @@ message ResponseStopDTO {
 
     function updateVehicleFoot(line) {
       const list = lastPlottedVehicles || [];
-      const thisWay = list.filter((v) => Number(v.direction) === detailDir).length;
-      const total = list.length;
-      if (!total) {
-        setLineFoot("Niciun vehicul raportat");
-        return;
-      }
+      const thisWay = list.filter((v) => v.direction == null || Number(v.direction) === detailDir).length;
       const dest = directionLabel(detailDir);
-      if (thisWay === total) {
-        setLineFoot(total === 1 ? "1 vehicul pe linie" : total + " vehicule pe linie", "ok");
+      if (!thisWay) {
+        setLineFoot("Niciun vehicul spre " + dest);
         return;
       }
       const way = thisWay === 1 ? "1 vehicul spre " + dest : thisWay + " vehicule spre " + dest;
-      setLineFoot(way + " · " + total + " total", "ok");
+      setLineFoot(way, "ok");
     }
 
     function lineInfoBits(line, detail, packLine) {
@@ -2025,9 +2020,10 @@ message ResponseStopDTO {
         const brg = path ? bearingOnPath(ll[0], ll[1], path) : null;
         const fill = cssColor(color);
         const ink = inkOnHex(fill);
-        const el = document.createElement("div");
         const otherWay = v.direction != null && Number(v.direction) !== detailDir;
-        el.className = "vehicle-no" + (selected ? " selected" : "") + (otherWay ? " is-dim" : "");
+        if (otherWay) return;
+        const el = document.createElement("div");
+        el.className = "vehicle-no" + (selected ? " selected" : "");
         el.style.setProperty("--veh", fill);
         el.style.setProperty("--veh-ink", ink);
         el.style.setProperty("--veh-delay", vehicleAnimDelay(key));
