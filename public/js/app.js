@@ -2108,6 +2108,43 @@ message ResponseStopDTO {
       setSourceData("route", emptyFC());
     }
 
+    // Dash sequence that shifts the gap forward along the line's coordinate
+    // order. Since each direction's polyline is ordered start→end in travel
+    // direction, the pulse flows the way vehicles actually move.
+    const ROUTE_FLOW_DASHES = [
+      [0, 4, 3],
+      [0.5, 4, 2.5],
+      [1, 4, 2],
+      [1.5, 4, 1.5],
+      [2, 4, 1],
+      [2.5, 4, 0.5],
+      [3, 4, 0],
+      [0, 0.5, 3, 3.5],
+      [0, 1, 3, 3],
+      [0, 1.5, 3, 2.5],
+      [0, 2, 3, 2],
+      [0, 2.5, 3, 1.5],
+      [0, 3, 3, 1],
+      [0, 3.5, 3, 0.5],
+    ];
+    let routeFlowRAF = null;
+    let routeFlowLast = 0;
+    let routeFlowStep = 0;
+
+    function startRouteFlow() {
+      if (routeFlowRAF != null || prefersReducedMotion()) return;
+      const tick = (ts) => {
+        routeFlowRAF = requestAnimationFrame(tick);
+        if (ts - routeFlowLast < 55) return;
+        routeFlowLast = ts;
+        routeFlowStep = (routeFlowStep + 1) % ROUTE_FLOW_DASHES.length;
+        if (map && map.getLayer("route-flow")) {
+          map.setPaintProperty("route-flow", "line-dasharray", ROUTE_FLOW_DASHES[routeFlowStep]);
+        }
+      };
+      routeFlowRAF = requestAnimationFrame(tick);
+    }
+
     function drawDirRoutes(color, opts) {
       const stroke = cssColor(color);
       const features = [];
@@ -2372,6 +2409,20 @@ message ResponseStopDTO {
           "line-opacity": ["case", ["==", ["get", "active"], 1], 0.94, 0.28],
         },
       });
+      map.addLayer({
+        id: "route-flow",
+        type: "line",
+        source: "route",
+        filter: ["==", ["get", "active"], 1],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": 3,
+          "line-opacity": 0.85,
+          "line-dasharray": [0, 4, 3],
+        },
+      });
+      startRouteFlow();
       map.addSource("stops", { type: "geojson", data: emptyFC() });
       map.addLayer({
         id: "stops-hit",
