@@ -1913,11 +1913,10 @@ message ResponseStopDTO {
     }
 
     const ACCESS_SVG =
-      '<svg class="access-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      '<circle cx="12" cy="4" r="1.9" fill="currentColor" stroke="none"/>' +
-      '<path d="M9.8 8h5"/>' +
-      '<path d="M11.4 6.4v6.6H16l2.3 4.8"/>' +
-      '<path d="M13.1 13.1a5.6 5.6 0 1 1-5.7 6.7"/>' +
+      '<svg class="access-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<circle cx="9" cy="4.5" r="2" fill="currentColor" stroke="none"/>' +
+      '<path d="M9 7v5.5h5l2.5 5"/>' +
+      '<circle cx="10.5" cy="15.5" r="5.5"/>' +
       "</svg>";
 
     function hasModeIcon(type) {
