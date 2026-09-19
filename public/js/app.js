@@ -554,9 +554,8 @@ message ResponseStopDTO {
         head.appendChild(sub);
       }
       if (detail && (detail.has_disability || detail.hasDisability)) {
-        const access = document.createElement("div");
-        access.className = "stop-street";
-        access.textContent = "Accesibil";
+        const access = accessIconEl(true);
+        access.classList.add("stop-access");
         head.appendChild(access);
       }
       const ticket = ticketOfficeNote(detail);
@@ -616,6 +615,18 @@ message ResponseStopDTO {
         destEl.className = "stop-dest-name";
         destEl.textContent = dest || (line.type || "Deschide linia");
         mid.appendChild(destEl);
+        const stopMeta = document.createElement("div");
+        stopMeta.className = "stop-meta";
+        const stopModeIcon = modeIconEl(line.type);
+        if (stopModeIcon) stopMeta.appendChild(stopModeIcon);
+        if (dest && line.type) {
+          const k = document.createElement("span");
+          k.className = "stop-kind";
+          k.textContent = kindLabel(line.type);
+          stopMeta.appendChild(k);
+        }
+        if (lineIsAccessible(line)) stopMeta.appendChild(accessIconEl(false));
+        if (stopMeta.childNodes.length) mid.appendChild(stopMeta);
         const cap = line.current_capacity != null ? line.current_capacity : line.currentCapacity;
         if (cap != null && cap !== "") {
           const load = document.createElement("div");
@@ -1013,9 +1024,6 @@ message ResponseStopDTO {
       const price = protoStr(detail, "price_ticket_sms", "priceTicketSms") || protoStr(packLine, "price_ticket_sms", "priceTicketSms");
       if (sms && price) bits.push("Bilet SMS " + price + " la " + sms);
       else if (sms) bits.push("Bilet SMS la " + sms);
-      const access = (packLine && (packLine.has_disability || packLine.hasDisability)) ||
-        (detail && (detail.has_disability || detail.hasDisability));
-      if (access) bits.push("Vehicule accesibile pe această linie");
       const cap = packLine && (packLine.current_capacity != null ? packLine.current_capacity : packLine.currentCapacity);
       if (cap != null && cap !== "") bits.push("Sarcină " + cap);
       return bits;
@@ -1133,7 +1141,9 @@ message ResponseStopDTO {
       }
 
       const bits = lineInfoBits(line, detailDetail, lineStopPack && lineStopPack.line);
-      if (bits.length) {
+      const lineAccess = lineIsAccessible(detailDetail) ||
+        lineIsAccessible(lineStopPack && lineStopPack.line) || lineIsAccessible(line);
+      if (bits.length || lineAccess) {
         const info = document.createElement("section");
         info.className = "line-info";
         const infoH = document.createElement("h2");
@@ -1142,6 +1152,13 @@ message ResponseStopDTO {
         for (const bit of bits) {
           const p = document.createElement("p");
           p.textContent = bit;
+          info.appendChild(p);
+        }
+        if (lineAccess) {
+          const p = document.createElement("p");
+          p.className = "line-access";
+          p.appendChild(accessIconEl(false));
+          p.appendChild(document.createTextNode("Vehicule accesibile pe această linie"));
           info.appendChild(p);
         }
         linePageEl.appendChild(info);
@@ -1361,7 +1378,12 @@ message ResponseStopDTO {
         const b = document.createElement("button");
         b.type = "button";
         b.className = "chip" + (f.saved ? " chip-saved" : "") + (activeType === f.key ? " on" : "");
-        b.textContent = f.label;
+        const chipMode = modeIconEl(f.key);
+        if (chipMode) b.appendChild(chipMode);
+        const chipLabel = document.createElement("span");
+        chipLabel.className = "chip-label";
+        chipLabel.textContent = f.label;
+        b.appendChild(chipLabel);
         b.setAttribute("aria-pressed", String(activeType === f.key));
         b.addEventListener("click", () => {
           activeType = f.key;
@@ -1404,12 +1426,13 @@ message ResponseStopDTO {
       destEl.className = "line-dest";
       destEl.textContent = dest || kind || "Deschide linia";
       mid.appendChild(destEl);
-      if (dest && kind) {
-        const t = document.createElement("span");
-        t.className = "line-kind";
-        t.textContent = kind;
-        mid.appendChild(t);
-      }
+      const meta = document.createElement("span");
+      meta.className = "line-kind";
+      const modeIcon = modeIconEl(line.type);
+      if (modeIcon) meta.appendChild(modeIcon);
+      if (dest && kind) meta.appendChild(document.createTextNode(kind));
+      if (lineIsAccessible(line)) meta.appendChild(accessIconEl(false));
+      if (meta.childNodes.length) mid.appendChild(meta);
 
       const eta = document.createElement("span");
       eta.className = "line-eta";
@@ -1816,6 +1839,7 @@ message ResponseStopDTO {
               dest: line.direction_name || line.directionName || "",
               direction: dirRaw === 0 || dirRaw === 1 ? dirRaw : null,
               next: arrivals[0] || null,
+              access: lineIsAccessible(line),
             });
           }
         }
@@ -1893,6 +1917,49 @@ message ResponseStopDTO {
       return '<svg class="vehicle-icon-svg" viewBox="0 0 22 22" width="20" height="20" fill="currentColor"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="11" cy="11" r="4" fill="currentColor" opacity="0.3"/></svg>';
     }
 
+    const ACCESS_SVG =
+      '<svg class="access-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<circle cx="12" cy="4" r="1.9" fill="currentColor" stroke="none"/>' +
+      '<path d="M9.8 8h5"/>' +
+      '<path d="M11.4 6.4v6.6H16l2.3 4.8"/>' +
+      '<path d="M13.1 13.1a5.6 5.6 0 1 1-5.7 6.7"/>' +
+      "</svg>";
+
+    function hasModeIcon(type) {
+      const t = String(type || "").toUpperCase();
+      return t === "BUS" || t === "TRAM" || t === "CABLE_CAR" || t === "SUBWAY";
+    }
+
+    function modeIconEl(type) {
+      if (!hasModeIcon(type)) return null;
+      const span = document.createElement("span");
+      span.className = "mode-icon";
+      span.setAttribute("aria-hidden", "true");
+      span.innerHTML = vehicleSvg(type);
+      return span;
+    }
+
+    function lineIsAccessible(obj) {
+      return !!(obj && (obj.access || obj.has_disability || obj.hasDisability));
+    }
+
+    function accessIconEl(withLabel) {
+      const span = document.createElement("span");
+      span.className = "access-icon" + (withLabel ? " has-label" : "");
+      span.innerHTML = ACCESS_SVG;
+      if (withLabel) {
+        const t = document.createElement("span");
+        t.className = "access-label";
+        t.textContent = "Accesibil";
+        span.appendChild(t);
+      } else {
+        span.setAttribute("role", "img");
+        span.setAttribute("aria-label", "Accesibil");
+        span.title = "Accesibil";
+      }
+      return span;
+    }
+
     function vehicleLatLng(v) {
       const lat = Number(v && (v.lat != null ? v.lat : v.latitude));
       const lng = Number(v && (v.lng != null ? v.lng : v.longitude));
@@ -1951,7 +2018,7 @@ message ResponseStopDTO {
         const fleet = v.code != null ? String(v.code) : vehicleKey(v) || "";
         const label = routeNo || fleet || "?";
         const kind = v.transport_type || v.transportType || "";
-        const access = v.has_disability || v.hasDisability ? "accessible" : "";
+        const hasAccess = !!(v.has_disability || v.hasDisability);
         const key = vehicleKey(v);
         const selected = key && key === selectedVehicleKey;
         const path = dirPaths[v.direction];
@@ -1984,7 +2051,13 @@ message ResponseStopDTO {
             (fleet && fleet !== label ? " · #" + escapeHtml(fleet) : "") +
             "</div>" +
             '<div class="popup-meta">' +
-            escapeHtml([kind, access].filter(Boolean).join(" · ")) +
+            escapeHtml(kind || "") +
+            (hasAccess
+              ? (kind ? " · " : "") +
+                '<span class="access-icon has-label popup-access">' +
+                ACCESS_SVG +
+                '<span class="access-label">Accesibil</span></span>'
+              : "") +
             "</div>"
         );
         const m = new maplibregl.Marker({ element: el, anchor: "left", offset: [0, 0] })
