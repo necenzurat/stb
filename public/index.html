@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>STB</title>
-  <meta name="theme-color" content="#fafafa" />
-  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#1b1e27" />
+  <meta name="color-scheme" content="dark" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Calistoga&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
   />
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="/styles/tokens.css" />
@@ -21,9 +21,9 @@
   <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.4.0/dist/protobuf.min.js"></script>
 </head>
 <body>
-  <a class="skip" href="#hud">Nearby lines</a>
+  <a class="skip" href="#hud">Linii din apropiere</a>
   <div id="map"></div>
-  <aside class="hud" id="hud" aria-label="Departures">
+  <aside class="hud" id="hud" aria-label="Plecări">
     <div class="hud-grip" id="grip" aria-hidden="true"><span></span></div>
 
     <div class="hud-nearby" id="nearbyView">
@@ -38,28 +38,28 @@
       </header>
       <div class="field hud-search">
         <span class="hud-search-icon" aria-hidden="true">⌕</span>
-        <input id="searchInput" type="search" placeholder="Search stop or place" autocomplete="off" spellcheck="false" aria-label="Search stops and places" />
-        <button type="button" class="hud-search-clear" id="searchClear" hidden aria-label="Clear search">×</button>
+        <input id="searchInput" type="search" placeholder="Caută stație sau loc" autocomplete="off" spellcheck="false" aria-label="Caută stații și locuri" />
+        <button type="button" class="hud-search-clear" id="searchClear" hidden aria-label="Șterge căutarea">×</button>
       </div>
-      <div class="hud-chips" id="chips" role="group" aria-label="Filter lines"></div>
+      <div class="hud-chips" id="chips" role="group" aria-label="Filtrează linii"></div>
       <div class="hud-board-head">
-        <h1 id="boardTitle">Nearby</h1>
-        <p class="hud-count" id="linesCount">Waiting for location…</p>
+        <h1 id="boardTitle">Aproape</h1>
+        <p class="hud-count" id="linesCount">Aștept locația…</p>
       </div>
-      <p class="hud-status" id="status" aria-live="polite">Locating…</p>
+      <p class="hud-status" id="status" aria-live="polite">Se localizează…</p>
       <div id="linesList" class="hud-list"></div>
     </div>
 
     <div class="hud-line" id="lineView" hidden>
       <header class="line-bar">
-        <button type="button" class="line-back" id="backBtn" aria-label="Back to nearby stops">
+        <button type="button" class="line-back" id="backBtn" aria-label="Înapoi la stațiile din apropiere">
           <span class="line-back-chevron" aria-hidden="true">←</span>
-          Nearby
+          Aproape
         </button>
         <span class="line-bar-route" id="lineBarRoute" hidden></span>
       </header>
       <div class="line-page" id="linePage"></div>
-      <footer class="line-foot" id="lineFoot" aria-live="polite">Loading line…</footer>
+      <footer class="line-foot" id="lineFoot" aria-live="polite">Se încarcă linia…</footer>
     </div>
   </aside>
 

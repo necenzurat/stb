@@ -110,12 +110,12 @@ message ResponseStopDTO {
     const clockDateEl = document.getElementById("clockDate");
 
     const FILTERS = [
-      { key: "all", label: "All" },
-      { key: "BUS", label: "Bus" },
-      { key: "TRAM", label: "Tram" },
-      { key: "CABLE_CAR", label: "Trolley" },
-      { key: "SUBWAY", label: "Metro" },
-      { key: "saved", label: "★ Saved", saved: true },
+      { key: "all", label: "Toate" },
+      { key: "BUS", label: "Autobuz" },
+      { key: "TRAM", label: "Tramvai" },
+      { key: "CABLE_CAR", label: "Troleibuz" },
+      { key: "SUBWAY", label: "Metrou" },
+      { key: "saved", label: "★ Salvate", saved: true },
     ];
     let activeType = "all";
     let searchResults = null;
@@ -216,7 +216,7 @@ message ResponseStopDTO {
     }
 
     async function requestToken() {
-      setStatus("Auth…");
+      setStatus("Autentificare…");
       const headers = deviceHeaders({ "App-key": APP_KEY });
       delete headers["User-Info"];
       const res = await fetch(BASE + "/proxy/user/auth", { headers });
@@ -455,7 +455,7 @@ message ResponseStopDTO {
       if (sec == null || sec === "") return "";
       const n = Number(sec);
       if (!Number.isFinite(n) || n < 0) return "";
-      if (n < 45) return "now";
+      if (n < 45) return "acum";
       return Math.round(n / 60) + " min";
     }
 
@@ -516,9 +516,9 @@ message ResponseStopDTO {
       if (!office) return "";
       const sked = office.ticketOfficeSchedule || office.ticket_office_schedule || {};
       const parts = [];
-      if (sked.weekday) parts.push("Weekdays " + sked.weekday);
-      if (sked.saturday) parts.push("Saturday " + sked.saturday);
-      if (sked.sunday) parts.push("Sunday " + sked.sunday);
+      if (sked.weekday) parts.push("Zile lucrătoare " + sked.weekday);
+      if (sked.saturday) parts.push("Sâmbătă " + sked.saturday);
+      if (sked.sunday) parts.push("Duminică " + sked.sunday);
       const name = office.name || office.type || "";
       if (name && parts.length) return name + " · " + parts.join(" · ");
       if (parts.length) return parts.join(" · ");
@@ -539,7 +539,7 @@ message ResponseStopDTO {
     function renderStopPopup(s, detail) {
       const wrap = document.createElement("div");
       wrap.className = "stop-popup";
-      const name = (detail && detail.name) || s.name || "Stop";
+      const name = (detail && detail.name) || s.name || "Stație";
       const head = document.createElement("div");
       head.className = "stop-head";
       const title = document.createElement("div");
@@ -556,7 +556,7 @@ message ResponseStopDTO {
       if (detail && (detail.has_disability || detail.hasDisability)) {
         const access = document.createElement("div");
         access.className = "stop-street";
-        access.textContent = "Accessible";
+        access.textContent = "Accesibil";
         head.appendChild(access);
       }
       const ticket = ticketOfficeNote(detail);
@@ -573,7 +573,7 @@ message ResponseStopDTO {
       if (!lines.length) {
         const empty = document.createElement("div");
         empty.className = "stop-note";
-        empty.textContent = "No departures posted.";
+        empty.textContent = "Nu sunt plecări afișate.";
         wrap.appendChild(empty);
         return wrap;
       }
@@ -584,7 +584,7 @@ message ResponseStopDTO {
       if (anySked && !anyLive) {
         const flag = document.createElement("div");
         flag.className = "stop-street";
-        flag.textContent = "Times from the timetable";
+            flag.textContent = "Ore din orar";
         head.appendChild(flag);
       }
 
@@ -599,8 +599,8 @@ message ResponseStopDTO {
         const next = arrivals[0];
         row.setAttribute(
           "aria-label",
-          "Line " + route + (dest ? " to " + dest : "") +
-            (next ? ", " + next.label + (next.scheduled ? ", timetable" : "") : "")
+          "Linia " + route + (dest ? " spre " + dest : "") +
+            (next ? ", " + next.label + (next.scheduled ? ", orar" : "") : "")
         );
 
         const bullet = document.createElement("span");
@@ -614,13 +614,13 @@ message ResponseStopDTO {
         mid.className = "stop-dest";
         const destEl = document.createElement("div");
         destEl.className = "stop-dest-name";
-        destEl.textContent = dest || (line.type || "Open line");
+        destEl.textContent = dest || (line.type || "Deschide linia");
         mid.appendChild(destEl);
         const cap = line.current_capacity != null ? line.current_capacity : line.currentCapacity;
         if (cap != null && cap !== "") {
           const load = document.createElement("div");
           load.className = "stop-street";
-          load.textContent = "Load " + cap;
+          load.textContent = "Sarcină " + cap;
           mid.appendChild(load);
         }
         const hours = line.timetable || [];
@@ -669,7 +669,7 @@ message ResponseStopDTO {
         const detail = await fetchStopInfo(s.id, { fresh: true });
         if (marker._stopFetchGen !== token || !marker.isPopupOpen()) return;
         if (!detail || (!(detail.lines || []).length && !detail.name)) {
-          throw new Error("Could not load departures");
+          throw new Error("Nu s-au putut încărca plecările");
         }
         setPopupContent(popup, renderStopPopup(s, detail));
         keepPopupInView(popup);
@@ -680,9 +680,9 @@ message ResponseStopDTO {
           popup,
           '<div class="stop-popup">' +
             '<div class="stop-head"><div class="stop-title">' +
-            escapeHtml(s.name || "Stop") +
+        escapeHtml(s.name || "Stație") +
             '</div></div><div class="stop-note is-err">' +
-            escapeHtml(e.message || "Could not load departures") +
+            escapeHtml(e.message || "Nu s-au putut încărca plecările") +
             "</div></div>"
         );
         keepPopupInView(popup);
@@ -798,10 +798,10 @@ message ResponseStopDTO {
 
     function kindLabel(type) {
       const t = String(type || "").toUpperCase();
-      if (t === "CABLE_CAR") return "Trolley";
-      if (t === "BUS") return "Bus";
-      if (t === "TRAM") return "Tram";
-      if (t === "SUBWAY") return "Metro";
+      if (t === "CABLE_CAR") return "Troleibuz";
+      if (t === "BUS") return "Autobuz";
+      if (t === "TRAM") return "Tramvai";
+      if (t === "SUBWAY") return "Metrou";
       return type || "";
     }
 
@@ -989,15 +989,15 @@ message ResponseStopDTO {
       const thisWay = list.filter((v) => Number(v.direction) === detailDir).length;
       const total = list.length;
       if (!total) {
-        setLineFoot("No vehicles reporting");
+        setLineFoot("Niciun vehicul raportat");
         return;
       }
       const dest = directionLabel(detailDir);
       if (thisWay === total) {
-        setLineFoot(total === 1 ? "1 vehicle on the line" : total + " vehicles on the line", "ok");
+        setLineFoot(total === 1 ? "1 vehicul pe linie" : total + " vehicule pe linie", "ok");
         return;
       }
-      const way = thisWay === 1 ? "1 vehicle toward " + dest : thisWay + " vehicles toward " + dest;
+      const way = thisWay === 1 ? "1 vehicul spre " + dest : thisWay + " vehicule spre " + dest;
       setLineFoot(way + " · " + total + " total", "ok");
     }
 
@@ -1011,13 +1011,13 @@ message ResponseStopDTO {
       else if (orgName) bits.push(orgName);
       const sms = protoStr(detail, "ticket_sms", "ticketSms") || protoStr(packLine, "ticket_sms", "ticketSms");
       const price = protoStr(detail, "price_ticket_sms", "priceTicketSms") || protoStr(packLine, "price_ticket_sms", "priceTicketSms");
-      if (sms && price) bits.push("SMS ticket " + price + " to " + sms);
-      else if (sms) bits.push("SMS ticket to " + sms);
+      if (sms && price) bits.push("Bilet SMS " + price + " la " + sms);
+      else if (sms) bits.push("Bilet SMS la " + sms);
       const access = (packLine && (packLine.has_disability || packLine.hasDisability)) ||
         (detail && (detail.has_disability || detail.hasDisability));
-      if (access) bits.push("Accessible vehicles on this line");
+      if (access) bits.push("Vehicule accesibile pe această linie");
       const cap = packLine && (packLine.current_capacity != null ? packLine.current_capacity : packLine.currentCapacity);
-      if (cap != null && cap !== "") bits.push("Load " + cap);
+      if (cap != null && cap !== "") bits.push("Sarcină " + cap);
       return bits;
     }
 
@@ -1030,7 +1030,7 @@ message ResponseStopDTO {
       const label = document.createElement("p");
       label.className = "line-dirs-label";
       label.id = "lineDirsLabel";
-      label.textContent = "Toward";
+      label.textContent = "In spre capătul";
       const dirs = document.createElement("div");
       dirs.className = "line-dirs";
       dirs.setAttribute("role", "group");
@@ -1056,7 +1056,7 @@ message ResponseStopDTO {
         btn.setAttribute("aria-pressed", String(dir === detailDir));
         const kicker = document.createElement("span");
         kicker.className = "line-dir-kicker";
-        kicker.textContent = "Last stop";
+        kicker.textContent = "Ultima stație";
         const name = document.createElement("span");
         name.className = "line-dir-name";
         name.textContent = directionLabel(dir);
@@ -1084,12 +1084,12 @@ message ResponseStopDTO {
         const nextSec = document.createElement("section");
         nextSec.className = "line-next";
         const nextH = document.createElement("h2");
-        nextH.textContent = "Next";
+        nextH.textContent = "Următorul";
         nextSec.appendChild(nextH);
         if (stopName) {
           const from = document.createElement("p");
           from.className = "line-from";
-          from.textContent = "From " + stopName;
+          from.textContent = "De la " + stopName;
           nextSec.appendChild(from);
         }
         if (arrivals.length) {
@@ -1100,13 +1100,13 @@ message ResponseStopDTO {
           if (arrivals[0] && arrivals[0].scheduled) {
             const flag = document.createElement("p");
             flag.className = "line-from";
-            flag.textContent = "Times from the timetable";
+        flag.textContent = "Ore din orar";
             nextSec.appendChild(flag);
           }
         } else {
           const empty = document.createElement("p");
           empty.className = "line-tt-empty";
-          empty.textContent = pack ? "No arrival posted at the nearest stop." : "No stop times for this direction yet.";
+          empty.textContent = pack ? "Nicio sosire afișată la stația din apropiere." : "Nicio oră pentru această direcție.";
           nextSec.appendChild(empty);
         }
         linePageEl.appendChild(nextSec);
@@ -1118,12 +1118,12 @@ message ResponseStopDTO {
           const tt = document.createElement("section");
           tt.className = "line-tt";
           const ttH = document.createElement("h2");
-          ttH.textContent = "Remaining today";
+          ttH.textContent = "Rămase astăzi";
           tt.appendChild(ttH);
           if (!rows.length) {
             const empty = document.createElement("p");
             empty.className = "line-tt-empty";
-            empty.textContent = "No more trips posted today.";
+            empty.textContent = "Nicio cursă rămasă astăzi.";
             tt.appendChild(empty);
           } else {
             tt.appendChild(renderTimetableBoard(rows));
@@ -1137,7 +1137,7 @@ message ResponseStopDTO {
         const info = document.createElement("section");
         info.className = "line-info";
         const infoH = document.createElement("h2");
-        infoH.textContent = "Line";
+        infoH.textContent = "Linia";
         info.appendChild(infoH);
         for (const bit of bits) {
           const p = document.createElement("p");
@@ -1152,7 +1152,7 @@ message ResponseStopDTO {
         const sec = document.createElement("section");
         sec.className = "line-stops";
         const h = document.createElement("h2");
-        h.textContent = stops.length === 1 ? "1 stop" : stops.length + " stops";
+        h.textContent = stops.length === 1 ? "1 stație" : stops.length + " stații";
         sec.appendChild(h);
         const near = nearestStops(stops, 1)[0];
         const list = document.createElement("div");
@@ -1163,12 +1163,12 @@ message ResponseStopDTO {
           row.className = "line-stop" + (near && String(near.id) === String(s.id) ? " is-near" : "");
           const name = document.createElement("span");
           name.className = "line-stop-name";
-          name.textContent = s.name || "Stop";
+          name.textContent = s.name || "Stație";
           row.appendChild(name);
           if (near && String(near.id) === String(s.id)) {
             const mark = document.createElement("span");
             mark.className = "line-stop-near";
-            mark.textContent = "Near you";
+            mark.textContent = "Lângă tine";
             row.appendChild(mark);
           }
           if (typeof s.lat === "number" && typeof s.lng === "number") {
@@ -1263,7 +1263,7 @@ message ResponseStopDTO {
       const isNow = /now/i.test(label);
       val.className = "eta-val" + (next && next.scheduled ? " is-sked" : "") + (isNow ? " is-now" : "");
       if (isNow) {
-        val.textContent = "NOW";
+        val.textContent = "ACUM";
         return val;
       }
       const m = label.match(/(\d+)/);
@@ -1402,7 +1402,7 @@ message ResponseStopDTO {
       mid.className = "line-mid";
       const destEl = document.createElement("span");
       destEl.className = "line-dest";
-      destEl.textContent = dest || kind || "Open line";
+      destEl.textContent = dest || kind || "Deschide linia";
       mid.appendChild(destEl);
       if (dest && kind) {
         const t = document.createElement("span");
@@ -1418,7 +1418,7 @@ message ResponseStopDTO {
         if (next.scheduled) {
           const flag = document.createElement("span");
           flag.className = "eta-flag";
-          flag.textContent = "SKED";
+          flag.textContent = "ORAR";
           eta.appendChild(flag);
         }
       } else {
@@ -1435,13 +1435,13 @@ message ResponseStopDTO {
       fav.type = "button";
       fav.className = "line-fav" + (isFav(line.id) ? " on" : "");
       fav.textContent = "\u2605";
-      fav.setAttribute("aria-label", (isFav(line.id) ? "Remove " : "Save line ") + route);
+      fav.setAttribute("aria-label", (isFav(line.id) ? "Scoate " : "Salvează linia ") + route);
       fav.addEventListener("click", (ev) => {
         ev.stopPropagation();
         toggleFav(line);
         const on = isFav(line.id);
         fav.classList.toggle("on", on);
-        fav.setAttribute("aria-label", (on ? "Remove " : "Save line ") + route);
+        fav.setAttribute("aria-label", (on ? "Scoate " : "Salvează linia ") + route);
         if (activeType === "saved") renderBoard();
       });
 
@@ -1455,19 +1455,19 @@ message ResponseStopDTO {
       const list = visibleLines();
       if (!list.length) {
         if (activeType === "saved") {
-          setLinesCount("0 saved");
-          setLinesListMessage("No saved lines yet. Tap \u2605 on a line to save it.");
+          setLinesCount("0 salvate");
+          setLinesListMessage("Nicio linie salvată. Atinge \u2605 pe o linie pentru a o salva.");
         } else if (activeType !== "all") {
           const f = FILTERS.find((x) => x.key === activeType);
-          setLinesCount("0 lines");
-          setLinesListMessage("No " + ((f && f.label) || activeType) + " lines nearby.");
+          setLinesCount("0 linii");
+          setLinesListMessage("Nicio linie " + ((f && f.label) || activeType) + " în apropiere.");
         } else {
-          setLinesCount("0 lines");
-          setLinesListMessage(nearbyLines.length ? "No lines nearby." : "No lines at the nearest stops.");
+          setLinesCount("0 linii");
+          setLinesListMessage(nearbyLines.length ? "Nicio linie în apropiere." : "Nicio linie la stațiile din apropiere.");
         }
         return;
       }
-      setLinesCount(list.length === 1 ? "1 line" : list.length + " lines");
+      setLinesCount(list.length === 1 ? "1 linie" : list.length + " linii");
       linesListEl.replaceChildren();
       for (const line of list) linesListEl.appendChild(boardRow(line));
     }
@@ -1475,11 +1475,11 @@ message ResponseStopDTO {
     function renderSearchResults(places, q) {
       linesListEl.replaceChildren();
       if (!places.length) {
-        setLinesCount("0 places");
-        setLinesListMessage('No places for "' + q + '".');
+        setLinesCount("0 locuri");
+        setLinesListMessage('Niciun loc pentru "' + q + '".');
         return;
       }
-      setLinesCount(places.length === 1 ? "1 place" : places.length + " places");
+      setLinesCount(places.length === 1 ? "1 loc" : places.length + " locuri");
       for (const p of places) {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -1491,7 +1491,7 @@ message ResponseStopDTO {
         mid.className = "place-mid";
         const nm = document.createElement("span");
         nm.className = "place-name";
-        nm.textContent = p.name || "Place";
+        nm.textContent = p.name || "Loc";
         const ds = document.createElement("span");
         ds.className = "place-desc";
         ds.textContent = p.description || kindLabel(p.type) || "";
@@ -1512,8 +1512,8 @@ message ResponseStopDTO {
 
     function runSearch(q) {
       const gen = ++searchGen;
-      setBoardTitle("Search");
-      setLinesListMessage("Searching\u2026");
+      setBoardTitle("Căutare");
+      setLinesListMessage("Se caută\u2026");
       apiJson("/places?query=" + encodeURIComponent(q))
         .then((json) => {
           if (gen !== searchGen) return;
@@ -1524,7 +1524,7 @@ message ResponseStopDTO {
         .catch((e) => {
           if (gen !== searchGen) return;
           console.error(e);
-          setLinesListMessage("Search failed.");
+          setLinesListMessage("Căutarea a eșuat.");
         });
     }
 
@@ -1533,7 +1533,7 @@ message ResponseStopDTO {
       searchGen++;
       searchInput.value = "";
       searchClear.hidden = true;
-      setBoardTitle(selectedLineId != null && selectedLine ? lineHeadline(selectedLine) : "Nearby");
+      setBoardTitle(selectedLineId != null && selectedLine ? lineHeadline(selectedLine) : "Aproape");
       renderBoard();
     }
 
@@ -1664,7 +1664,7 @@ message ResponseStopDTO {
         if (searchResults) {
           searchResults = null;
           searchGen++;
-          setBoardTitle(selectedLineId != null && selectedLine ? lineHeadline(selectedLine) : "Nearby");
+          setBoardTitle(selectedLineId != null && selectedLine ? lineHeadline(selectedLine) : "Aproape");
           renderBoard();
         }
         return;
@@ -1746,9 +1746,9 @@ message ResponseStopDTO {
       lastPlottedVehicles = [];
       clearRoute();
       closeStopPopup();
-      setBoardTitle("Nearby");
+      setBoardTitle("Aproape");
       linePageEl.replaceChildren();
-      setLineFoot("Loading line…");
+      setLineFoot("Se încarcă linia…");
       setLineBar(null);
       markSelectedRow();
       syncLineView();
@@ -1785,11 +1785,11 @@ message ResponseStopDTO {
       const ranked = nearestStops(stops, NEAREST_STOPS);
       if (!ranked.length) {
         nearbyLines = [];
-        setLinesCount("0 lines");
-        setLinesListMessage("No nearby stops to collect lines from.");
+        setLinesCount("0 linii");
+        setLinesListMessage("Nicio stație în apropiere de unde să colectez linii.");
         return;
       }
-      setLinesCount("Loading lines from " + ranked.length + " stops…");
+      setLinesCount("Se încarcă linii de la " + ranked.length + " stații…");
       const byId = new Map();
       try {
         const batches = await Promise.all(
@@ -1829,8 +1829,8 @@ message ResponseStopDTO {
       } catch (e) {
         if (gen !== nearbyGen) return;
         console.error(e);
-        setLinesCount((e.message || "lines failed") + (e.status ? " (" + e.status + ")" : ""), "err");
-        setLinesListMessage("Could not load nearby lines.");
+        setLinesCount((e.message || "eroare linii") + (e.status ? " (" + e.status + ")" : ""), "err");
+        setLinesListMessage("Nu s-au putut încărca liniile din apropiere.");
       }
     }
 
@@ -1874,6 +1874,23 @@ message ResponseStopDTO {
       let n = 0;
       for (let i = 0; i < s.length; i++) n = (n + s.charCodeAt(i) * (i + 1)) % 17;
       return (n * 0.11).toFixed(2) + "s";
+    }
+
+    function vehicleSvg(type) {
+      var t = String(type || "").toUpperCase();
+      if (t === "BUS") {
+        return '<svg class="vehicle-icon-svg" viewBox="0 0 22 22" width="20" height="20" fill="currentColor"><rect x="3" y="4" width="16" height="13" rx="3" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="6" y="6" width="3.5" height="3" rx="0.5" fill="currentColor" opacity="0.45"/><rect x="12.5" y="6" width="3.5" height="3" rx="0.5" fill="currentColor" opacity="0.45"/><rect x="5" y="11" width="12" height="2.5" rx="1" fill="currentColor" opacity="0.35"/><circle cx="7.5" cy="18.5" r="1.5" fill="currentColor"/><circle cx="14.5" cy="18.5" r="1.5" fill="currentColor"/><line x1="6" y1="2" x2="16" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+      }
+      if (t === "TRAM") {
+        return '<svg class="vehicle-icon-svg" viewBox="0 0 22 22" width="20" height="20" fill="currentColor"><rect x="4" y="5" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="6" y="7" width="10" height="4" rx="1" fill="currentColor" opacity="0.35"/><rect x="6" y="12.5" width="10" height="2" rx="1" fill="currentColor" opacity="0.25"/><line x1="9" y1="5" x2="7" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="5" x2="15" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="5" y1="2" x2="17" y2="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="8" cy="19.5" r="1.5" fill="currentColor"/><circle cx="14" cy="19.5" r="1.5" fill="currentColor"/></svg>';
+      }
+      if (t === "CABLE_CAR") {
+        return '<svg class="vehicle-icon-svg" viewBox="0 0 22 22" width="20" height="20" fill="currentColor"><rect x="4" y="6" width="14" height="11" rx="2.5" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="6" y="8" width="4" height="3" rx="0.5" fill="currentColor" opacity="0.4"/><rect x="12" y="8" width="4" height="3" rx="0.5" fill="currentColor" opacity="0.4"/><rect x="6" y="12.5" width="10" height="2" rx="1" fill="currentColor" opacity="0.25"/><line x1="11" y1="6" x2="11" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="7" y1="2" x2="15" y2="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="8" cy="19" r="1.5" fill="currentColor"/><circle cx="14" cy="19" r="1.5" fill="currentColor"/></svg>';
+      }
+      if (t === "SUBWAY") {
+        return '<svg class="vehicle-icon-svg" viewBox="0 0 22 22" width="20" height="20" fill="currentColor"><rect x="3" y="5" width="16" height="12" rx="3" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="5.5" y="7" width="11" height="5" rx="1.5" fill="currentColor" opacity="0.35"/><path d="M7 14.5 L11 17 L15 14.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="7.5" cy="19.5" r="1.5" fill="currentColor"/><circle cx="14.5" cy="19.5" r="1.5" fill="currentColor"/></svg>';
+      }
+      return '<svg class="vehicle-icon-svg" viewBox="0 0 22 22" width="20" height="20" fill="currentColor"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="11" cy="11" r="4" fill="currentColor" opacity="0.3"/></svg>';
     }
 
     function vehicleLatLng(v) {
@@ -1949,13 +1966,16 @@ message ResponseStopDTO {
         el.style.setProperty("--veh-delay", vehicleAnimDelay(key));
         el.tabIndex = 0;
         el.setAttribute("role", "button");
-        el.setAttribute("aria-label", "Vehicle " + label + (fleet && fleet !== label ? " fleet " + fleet : ""));
+        el.setAttribute("aria-label", "Vehicul " + label + (fleet && fleet !== label ? " flotă " + fleet : ""));
         el.innerHTML =
           '<span class="vehicle-mark"><span class="vehicle-beacon"><span class="vehicle-icon' +
           (brg != null ? " has-heading" : "") +
           '"' +
           (brg != null ? ' style="--veh-brg:' + brg.toFixed(1) + 'deg"' : "") +
-          '><span class="vehicle-arrow"></span><span class="vehicle-dot"></span></span></span><span class="vehicle-code">' +
+          ' data-veh-type="' + escapeHtml(String(kind || "").toUpperCase()) +
+          '"><svg class="vehicle-arrow" viewBox="0 0 12 14" width="10" height="12"><polygon points="6,0 12,14 0,14" fill="currentColor"/></svg>' +
+          vehicleSvg(kind) +
+          '</span></span><span class="vehicle-code">' +
           escapeHtml(label) +
           "</span></span>";
         const popup = new maplibregl.Popup({ offset: 16, closeButton: false, maxWidth: "240px" }).setHTML(
@@ -2138,7 +2158,7 @@ message ResponseStopDTO {
       dirTouched = false;
       setLineHash(line.id);
       setLineBar(line);
-      setLineFoot("Loading vehicles…");
+      setLineFoot("Se încarcă vehiculele…");
       renderLinePage();
       syncLineView();
       stopVehiclePoll();
@@ -2178,11 +2198,11 @@ message ResponseStopDTO {
         });
         await setLineDirection(detailDir, { force: true });
         if (String(selectedLineId) !== String(line.id)) return;
-        if (!ok) setLineFoot("No route drawn for this line", "warn");
+        if (!ok) setLineFoot("Nicio rută desenată pentru această linie", "warn");
         else updateVehicleFoot(line);
       } catch (e) {
         console.error(e);
-        setLineFoot((e.message || "line failed") + (e.status ? " (" + e.status + ")" : ""), "err");
+        setLineFoot((e.message || "eroare linie") + (e.status ? " (" + e.status + ")" : ""), "err");
       } finally {
         drawingLine = false;
       }
@@ -2191,16 +2211,16 @@ message ResponseStopDTO {
     async function loadStops() {
       if (map.getZoom() < MAP_ZOOM.minimum) {
         if (pathStopsOverride || selectedLineId) return;
-        setStatus("Zoom in to " + MAP_ZOOM.minimum + "+ to load stops (now " + Math.round(map.getZoom()) + ")", "warn");
+        setStatus("Apropie la " + MAP_ZOOM.minimum + "+ pentru a încărca stațiile (acum " + Math.round(map.getZoom()) + ")", "warn");
         clearStops();
         lastStops = [];
-        setLinesCount("Zoom in");
-        setLinesListMessage("Zoom in to " + MAP_ZOOM.minimum + "+ to load nearby lines.");
+        setLinesCount("Apropie");
+        setLinesListMessage("Apropie la " + MAP_ZOOM.minimum + "+ pentru a încărca liniile din apropiere.");
         return;
       }
       const gen = ++fetchGen;
       const path = "/lines/v2/home/stops/" + parseBoundsPath(map.getBounds());
-      if (!selectedLineId) setStatus("Loading stops…");
+      if (!selectedLineId)       setStatus("Se încarcă stațiile…");
       try {
         const buf = await apiFetch(path);
         if (gen !== fetchGen) return;
@@ -2212,15 +2232,15 @@ message ResponseStopDTO {
           clearStops();
         } else {
           const n = plotStops(lastStops);
-          statusEl.innerHTML = '<span class="count">' + n + "</span> nearby stops";
+          statusEl.innerHTML = '<span class="count">' + n + "</span> stații în apropiere";
           statusEl.className = "hud-status ok";
         }
         if (selectedLineId == null) await loadNearbyLines(lastStops);
       } catch (e) {
         if (gen !== fetchGen) return;
         console.error(e);
-        setStatus((e.message || "load failed") + (e.status ? " (" + e.status + ")" : ""), "err");
-        setLinesCount((e.message || "load failed"), "err");
+        setStatus((e.message || "eroare încărcare") + (e.status ? " (" + e.status + ")" : ""), "err");
+        setLinesCount((e.message || "eroare încărcare"), "err");
       }
     }
 
@@ -2278,14 +2298,14 @@ message ResponseStopDTO {
         btn.disabled = true;
         btn.setAttribute("aria-busy", "true");
       }
-      if (selectedLineId == null) setStatus("Locating…");
+      if (selectedLineId == null) setStatus("Se localizează…");
       try {
         const loc = await locate();
         setUserLoc(loc.lat, loc.lng, loc.acc);
         map.stop();
         map.jumpTo({ center: [loc.lng, loc.lat], zoom: MAP_ZOOM.initial });
         if (loc.fallback && selectedLineId == null) {
-          setStatus("Location fallback: București center (" + loc.reason + ")", "warn");
+          setStatus("Fallback locație: centrul București (" + loc.reason + ")", "warn");
         }
       } finally {
         if (btn) {
@@ -2310,7 +2330,7 @@ message ResponseStopDTO {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "map-locate";
-      btn.setAttribute("aria-label", "My location");
+      btn.setAttribute("aria-label", "Locația mea");
       btn.innerHTML = '<span class="map-locate-icon" aria-hidden="true"></span>';
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
@@ -2347,7 +2367,7 @@ message ResponseStopDTO {
         source: "route",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#0052ff",
+          "line-color": "#3a3f4c",
           "line-width": ["case", ["==", ["get", "active"], 1], 4.5, 3],
           "line-opacity": ["case", ["==", ["get", "active"], 1], 0.94, 0.28],
         },
@@ -2369,7 +2389,7 @@ message ResponseStopDTO {
         source: "stops",
         paint: {
           "circle-radius": 5.5,
-          "circle-color": "#0f172a",
+          "circle-color": "#3a3f4c",
           "circle-stroke-width": 2,
           "circle-stroke-color": "#ffffff",
           "circle-opacity": 0.95,
@@ -2381,14 +2401,14 @@ message ResponseStopDTO {
         type: "fill",
         source: "user",
         filter: ["==", ["get", "kind"], "accuracy"],
-        paint: { "fill-color": "#0052ff", "fill-opacity": 0.14 },
+        paint: { "fill-color": "#eea52b", "fill-opacity": 0.14 },
       });
       map.addLayer({
         id: "user-accuracy-line",
         type: "line",
         source: "user",
         filter: ["==", ["get", "kind"], "accuracy"],
-        paint: { "line-color": "#0052ff", "line-width": 1.5 },
+        paint: { "line-color": "#eea52b", "line-width": 1.5 },
       });
       map.addLayer({
         id: "user-dot",
@@ -2399,7 +2419,7 @@ message ResponseStopDTO {
           "circle-radius": 7,
           "circle-color": "#ffffff",
           "circle-stroke-width": 3,
-          "circle-stroke-color": "#0052ff",
+          "circle-stroke-color": "#eea52b",
         },
       });
       map.on("mouseenter", "stops-hit", () => {
@@ -2418,7 +2438,7 @@ message ResponseStopDTO {
         if (hit.layer.id === "user-dot") {
           new maplibregl.Popup({ offset: 12, closeButton: false })
             .setLngLat(e.lngLat)
-            .setText("You")
+            .setText("Tu")
             .addTo(map);
           return;
         }
@@ -2481,12 +2501,12 @@ message ResponseStopDTO {
       });
 
       await ensureToken();
-      setStatus("Requesting location…");
+      setStatus("Se solicită locația…");
       const loc = await locate();
       setUserLoc(loc.lat, loc.lng, loc.acc);
       map.jumpTo({ center: [loc.lng, loc.lat], zoom: MAP_ZOOM.initial });
       map.resize();
-      if (loc.fallback) setStatus("Location fallback: București center (" + loc.reason + ")", "warn");
+      if (loc.fallback) setStatus("Fallback locație: centrul București (" + loc.reason + ")", "warn");
 
       map.on("moveend", () => {
         clearTimeout(moveTimer);

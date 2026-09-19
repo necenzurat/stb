@@ -1,67 +1,74 @@
 /* ==========================================================================
-   Design tokens
-   The single source of truth for color, type, space, radius, shadow and
-   motion. Every other stylesheet consumes these; nothing hard-codes a value.
+   Design tokens — the departure board
+   A dark, glanceable transit display that floats on the light map. One source
+   of truth for color, type, space, radius, shadow and motion. Colors are OKLCH
+   so lightness and chroma stay perceptually even; nothing hard-codes a value.
+
+   Two worlds live here on purpose:
+   - BOARD tokens: the dark overlay panel (bright ink, amber live signal).
+   - MAP tokens: markers drawn on the light Positron map (dark ink, light casing).
+   Keep them apart. A board color on a map marker (or vice versa) will read wrong.
    ========================================================================== */
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  /* --- Surfaces & ink ------------------------------------------------ */
-  --background: #fafafa;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --border: #e2e8f0;
+  /* --- Board surfaces (cool-tinted slate, never pure black) ---------- */
+  --board: oklch(0.19 0.014 255);
+  --board-raised: oklch(0.235 0.015 255);
+  --board-sunken: oklch(0.15 0.016 255);
+  --hairline: oklch(1 0 0 / 0.08);
+  --hairline-strong: oklch(1 0 0 / 0.15);
 
-  /* --- Accent -------------------------------------------------------- */
-  --accent: #0052ff;
-  --accent-secondary: #4d7cff;
-  --accent-foreground: #ffffff;
-  --ring: #0052ff;
+  /* --- Ink (warm near-white down to faint labels) -------------------- */
+  --ink: oklch(0.96 0.008 90);
+  --ink-dim: oklch(0.74 0.012 255);
+  --ink-faint: oklch(0.58 0.016 255);
 
-  /* --- Status -------------------------------------------------------- */
-  --err: #dc2626;
-  --warn: #b45309;
-  --ok: #047857;
+  /* --- Live signal: the one accent (countdown-board amber) ----------- */
+  --live: oklch(0.83 0.155 78);
+  --live-soft: oklch(0.83 0.155 78 / 0.15);
+  --live-ink: oklch(0.24 0.04 78);
+  --ring: var(--live);
 
-  /* --- Type ---------------------------------------------------------- */
+  /* --- Status ------------------------------------------------------- */
+  --err: oklch(0.7 0.19 25);
+  --warn: oklch(0.8 0.15 60);
+  --ok: oklch(0.8 0.14 155);
+
+  /* --- Map world: markers on the light map -------------------------- */
+  --on-map: oklch(0.99 0 0);          /* casings / marker borders */
+  --map-ink: oklch(0.29 0.02 255);    /* stop dots, route fallback */
+  --map-you: var(--live);             /* you-are-here beacon */
+
+  /* --- Type: one grotesque for labels, one mono for times ----------- */
   --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Calistoga", Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-  /* --- Radius -------------------------------------------------------- */
-  --radius-xs: 8px;
-  --radius-sm: 10px;
-  --radius: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  /* --- Radius (rectilinear, like a real display) -------------------- */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --radius-pill: 999px;
 
-  /* --- Shadow -------------------------------------------------------- */
-  --shadow-sm: 0 1px 3px rgb(15 23 42 / 0.06);
-  --shadow-md: 0 4px 6px rgb(15 23 42 / 0.07);
-  --shadow-lg: 0 10px 15px rgb(15 23 42 / 0.08);
-  --shadow-xl: 0 20px 25px rgb(15 23 42 / 0.1);
-  --shadow-accent: 0 4px 14px rgb(0 82 255 / 0.25);
-  --shadow-accent-lg: 0 8px 24px rgb(0 82 255 / 0.35);
+  /* --- Shadow: the board lifts off the map -------------------------- */
+  --shadow-panel: 0 10px 34px oklch(0 0 0 / 0.32), 0 2px 8px oklch(0 0 0 / 0.24);
+  --shadow-pop: 0 12px 40px oklch(0 0 0 / 0.4);
+  --shadow-marker: 0 1px 5px oklch(0 0 0 / 0.45);
 
-  /* --- Gradients ----------------------------------------------------- */
-  --gradient-accent: linear-gradient(to right, var(--accent), var(--accent-secondary));
-  --gradient-accent-diag: linear-gradient(135deg, var(--accent), var(--accent-secondary));
-
-  /* --- Motion -------------------------------------------------------- */
+  /* --- Motion (product range: quick, ease-out, no bounce) ----------- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur-fast: 200ms;
-  --dur-base: 300ms;
-  --dur-slow: 700ms;
+  --dur-fast: 160ms;
+  --dur-base: 220ms;
+  --dur-slow: 520ms;
 
-  /* --- Layout -------------------------------------------------------- */
+  /* --- Layout ------------------------------------------------------- */
   --hud-width: 372px;
   --hud-gap: 12px;
 
-  /* Runtime values written by js/app.js. Declared here so every consumer
+  /* Runtime values written by js/app.js. Declared so every consumer
      resolves to a real length before the first paint. */
   --hud-stack: 0px;
   --sheet-y: 0px;
