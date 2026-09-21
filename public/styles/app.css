@@ -463,7 +463,8 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .eta-val.is-now {
+  /* Only a tracked vehicle pulses; a schedule-derived "now" stays still. */
+  .eta-val.is-now:not(.is-sked) {
     animation: now-pulse 1.6s var(--ease-out) infinite;
   }
 }
@@ -684,6 +685,11 @@
   font: 600 13.5px/1.25 var(--font-body);
 }
 
+.line-dir-count {
+  font: 500 11.5px/1.25 var(--font-body);
+  color: var(--ink-dim);
+}
+
 /* Active direction fills with the line's own color (data-driven). */
 .line-dir.on {
   border-color: transparent;
@@ -694,6 +700,11 @@
 .line-dir.on .line-dir-kicker {
   color: inherit;
   opacity: 0.75;
+}
+
+.line-dir.on .line-dir-count {
+  color: inherit;
+  opacity: 0.85;
 }
 
 .line-next {
@@ -727,35 +738,22 @@
   margin-top: 10px;
 }
 
-.line-tt-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 14px;
-  align-items: baseline;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--hairline);
-}
-
-.line-tt-row:last-child {
-  border-bottom: 0;
-}
-
-.line-tt-hour {
-  font: 700 16px/1 var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-}
-
-.line-tt-mins {
+.line-tt-times {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 12px;
+  gap: 6px 10px;
 }
 
-.line-tt-min {
+.line-tt-time {
   font: 500 15px/1 var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--ink-dim);
+}
+
+/* The next departure reads as the one to catch. */
+.line-tt-time.is-next {
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .line-info {
@@ -773,6 +771,10 @@
 
 .line-stop-list {
   margin-top: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .line-stop {
@@ -833,6 +835,10 @@
   background: var(--board-sunken);
   color: var(--ink-dim);
   font: 500 12.5px/1.35 var(--font-body);
+}
+
+.line-foot:empty {
+  display: none;
 }
 
 .line-foot.ok {
@@ -1049,8 +1055,8 @@
 
 .vehicle-beacon {
   position: relative;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   overflow: visible;
 }
@@ -1073,8 +1079,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
 }
 
 .vehicle-icon.has-heading {
@@ -1084,11 +1090,11 @@
 .vehicle-arrow {
   display: none;
   position: absolute;
-  top: -11px;
+  top: -13px;
   left: 50%;
-  width: 10px;
-  height: 12px;
-  margin-left: -5px;
+  width: 12px;
+  height: 14px;
+  margin-left: -6px;
   color: var(--veh);
   filter: drop-shadow(0 0 1px oklch(1 0 0 / 0.7));
   z-index: 2;
@@ -1100,8 +1106,8 @@
 
 .vehicle-icon-svg {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   color: var(--veh);
   filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.3));
 }
@@ -1147,6 +1153,10 @@
 }
 
 /* --- Map controls ---------------------------------------------------- */
+/* The right edge carries everything: one rail of actions at the top, the ©
+   attribution alone at the bottom. The stock NavigationControl is gone, so
+   all three buttons share one 44px target, one hairline divider and one
+   20px optical icon grid drawn through masks. */
 
 .maplibregl-ctrl-group {
   background: var(--board-raised);
@@ -1157,14 +1167,33 @@
 }
 
 .maplibregl-ctrl-group button {
+  display: grid;
+  place-items: center;
   width: 44px;
   height: 44px;
+  padding: 0;
   cursor: pointer;
   background: transparent;
+  transition: box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .maplibregl-ctrl-group button + button {
   border-top: 1px solid var(--hairline);
+}
+
+/* Hover and press wash the whole target, so the amber locate button keeps
+   its fill instead of flipping to a board color. */
+.maplibregl-ctrl-group button:not(:disabled):hover {
+  box-shadow: inset 0 0 0 999px var(--hairline);
+}
+
+.maplibregl-ctrl-group button:not(:disabled):active {
+  box-shadow: inset 0 0 0 999px var(--hairline-strong);
+}
+
+.maplibregl-ctrl-group button:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 .maplibregl-ctrl-group button:focus-visible {
@@ -1172,37 +1201,40 @@
   outline-offset: -2px;
 }
 
-.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,
-.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon {
-  opacity: 1;
-  background-size: 22px 22px;
-}
-
-.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon {
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 29 29'%3E%3Cpath fill='%23e9ecf5' d='M14.5 8.5c-.75 0-1.5.75-1.5 1.5v3h-3c-.75 0-1.5.75-1.5 1.5S9.25 16 10 16h3v3c0 .75.75 1.5 1.5 1.5s1.5-.75 1.5-1.5v-3h3c.75 0 1.5-.75 1.5-1.5s-.75-1.5-1.5-1.5h-3v-3c0-.75-.75-1.5-1.5-1.5z'/%3E%3C/svg%3E");
-}
-
-.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon {
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 29 29'%3E%3Cpath fill='%23e9ecf5' d='M10 13c-.75 0-1.5.75-1.5 1.5S9.25 16 10 16h9c.75 0 1.5-.75 1.5-1.5S19.75 13 19 13h-9z'/%3E%3C/svg%3E");
-}
-
-/* The locate control is the one amber action on the map. */
-.map-locate {
-  background: var(--live) !important;
-}
-
-.map-locate .map-locate-icon {
+.map-rail-icon {
   display: block;
-  width: 22px;
-  height: 22px;
-  margin: 0 auto;
-  background: var(--live-ink);
-  -webkit-mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z'/%3E%3C/svg%3E") center / contain no-repeat;
+  width: 20px;
+  height: 20px;
+  background: var(--ink);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
-.map-locate:disabled {
-  opacity: 0.5;
+.map-zoom-in .map-rail-icon {
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z'/%3E%3C/svg%3E");
+}
+
+.map-zoom-out .map-rail-icon {
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 11h14v2H5z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 11h14v2H5z'/%3E%3C/svg%3E");
+}
+
+/* Locate is the one amber action on the map. */
+.maplibregl-ctrl-group button.map-locate,
+.maplibregl-ctrl-group button.map-locate:not(:disabled):hover,
+.maplibregl-ctrl-group button.map-locate:not(:disabled):active {
+  background-color: var(--live);
+}
+
+.map-locate .map-rail-icon {
+  background: var(--live-ink);
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z'/%3E%3C/svg%3E");
 }
 
 .maplibregl-ctrl-attrib {
@@ -1229,14 +1261,29 @@
   padding: 4px 8px;
 }
 
-.maplibregl-ctrl-bottom-right {
-  right: 8px;
-  bottom: 8px;
+.maplibregl-ctrl-attrib-inner {
+  max-width: min(300px, calc(100vw - 32px));
 }
 
-.maplibregl-ctrl-bottom-left {
-  left: 8px;
-  bottom: 8px;
+/* Corners own their own insets now that both controls live on the right. */
+.maplibregl-ctrl-top-right {
+  top: max(var(--hud-gap), env(safe-area-inset-top));
+  right: max(var(--hud-gap), env(safe-area-inset-right));
+}
+
+.maplibregl-ctrl-bottom-right {
+  right: max(var(--hud-gap), env(safe-area-inset-right));
+  bottom: max(var(--hud-gap), env(safe-area-inset-bottom));
+}
+
+.maplibregl-ctrl-top-right > .maplibregl-ctrl,
+.maplibregl-ctrl-bottom-right > .maplibregl-ctrl {
+  margin: 0;
+}
+
+.maplibregl-ctrl-top-right > .maplibregl-ctrl + .maplibregl-ctrl,
+.maplibregl-ctrl-bottom-right > .maplibregl-ctrl + .maplibregl-ctrl {
+  margin-top: 8px;
 }
 
 /* --- Compact layout (bottom sheet) ----------------------------------- */
@@ -1314,15 +1361,12 @@
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
+  /* The rail already sits top-right; the © pill rides just above the sheet
+     so it never disappears behind the board. */
   .maplibregl-ctrl-bottom-right {
-    top: max(8px, env(safe-area-inset-top));
-    right: max(8px, env(safe-area-inset-right));
-    bottom: auto;
-  }
-
-  .maplibregl-ctrl-bottom-left {
-    bottom: calc(var(--hud-stack, 42dvh) + 8px);
-    left: max(8px, env(safe-area-inset-left));
+    top: auto;
+    right: max(var(--hud-gap), env(safe-area-inset-right));
+    bottom: calc(var(--hud-stack, 42dvh) + var(--hud-gap));
   }
 
   .maplibregl-popup {

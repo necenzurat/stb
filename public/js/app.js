@@ -14,6 +14,9 @@
     const LS_APP = "appId";
     const LS_TOKEN = "userInfo";
 
+    // Below this many seconds an arrival reads as "now" rather than a countdown.
+    const ARRIVAL_NOW_SECONDS = 45;
+
     const PROTO = `
 syntax = "proto2";
 package ro.radcom.rp.protofiles.generate;
@@ -126,6 +129,11 @@ message ResponseStopDTO {
     let dirStops = { 0: [], 1: [] };
     let lineStopPack = undefined;
     let dirTouched = false;
+    // Stop list: pinned means the nearest stop is kept as the first visible row;
+    // once the rider scrolls the list themselves, their position wins.
+    let stopListPinned = true;
+    let stopListScroll = 0;
+    let stopListEl = null;
 
     let protoRoot;
     let HomeStopsType;
@@ -455,8 +463,16 @@ message ResponseStopDTO {
       if (sec == null || sec === "") return "";
       const n = Number(sec);
       if (!Number.isFinite(n) || n < 0) return "";
-      if (n < 45) return "acum";
+      if (n < ARRIVAL_NOW_SECONDS) return "acum";
       return Math.round(n / 60) + " min";
+    }
+
+    function isArrivalNow(sec, label) {
+      if (sec != null && sec !== "") {
+        const n = Number(sec);
+        if (Number.isFinite(n)) return n >= 0 && n < ARRIVAL_NOW_SECONDS;
+      }
+      return /^(acum|now)$/i.test(String(label || "").trim());
     }
 
     function lineArrivals(line) {
@@ -467,10 +483,12 @@ message ResponseStopDTO {
         const label = formatArrivalSeconds(raw);
         if (!label) continue;
         const sec = Number(raw);
+        const known = Number.isFinite(sec) && sec >= 0;
         out.push({
           label: label,
+          now: isArrivalNow(known ? sec : null, label),
           scheduled: !!(t && t.timetable),
-          seconds: Number.isFinite(sec) && sec >= 0 ? sec : Number.POSITIVE_INFINITY,
+          seconds: known ? sec : Number.POSITIVE_INFINITY,
         });
         if (out.length >= 3) break;
       }
@@ -478,10 +496,13 @@ message ResponseStopDTO {
         const one = formatArrivalSeconds(line.arriving_time != null ? line.arriving_time : line.arrivingTime);
         if (one) {
           const rawOne = line.arriving_time != null ? line.arriving_time : line.arrivingTime;
+          const secOne = Number(rawOne);
+          const knownOne = Number.isFinite(secOne) && secOne >= 0;
           out.push({
             label: one,
+            now: isArrivalNow(knownOne ? secOne : null, one),
             scheduled: !!(line.is_timetable || line.isTimetable),
-            seconds: Number(rawOne),
+            seconds: knownOne ? secOne : Number.POSITIVE_INFINITY,
           });
         }
       }
@@ -583,7 +604,7 @@ message ResponseStopDTO {
       if (anySked && !anyLive) {
         const flag = document.createElement("div");
         flag.className = "stop-street";
-            flag.textContent = "Ore din orar";
+        flag.textContent = "Din orar";
         head.appendChild(flag);
       }
 
@@ -627,13 +648,6 @@ message ResponseStopDTO {
         }
         if (lineIsAccessible(line)) stopMeta.appendChild(accessIconEl(false));
         if (stopMeta.childNodes.length) mid.appendChild(stopMeta);
-        const cap = line.current_capacity != null ? line.current_capacity : line.currentCapacity;
-        if (cap != null && cap !== "") {
-          const load = document.createElement("div");
-          load.className = "stop-street";
-          load.textContent = "Sarcină " + cap;
-          mid.appendChild(load);
-        }
         const hours = line.timetable || [];
         if (hours.length) {
           const sked = document.createElement("div");
@@ -841,7 +855,7 @@ message ResponseStopDTO {
     }
 
     function directionLabel(dir) {
-      return directionName(dir) || lastStopName(dir) || "Loading…";
+      return directionName(dir) || lastStopName(dir) || "";
     }
 
     function matchDirFromDest(dest, tur, retur) {
@@ -923,23 +937,19 @@ message ResponseStopDTO {
     function renderTimetableBoard(rows) {
       const board = document.createElement("div");
       board.className = "line-tt-board";
+      const times = document.createElement("div");
+      times.className = "line-tt-times";
+      let first = true;
       for (const row of rows) {
-        const r = document.createElement("div");
-        r.className = "line-tt-row";
-        const hour = document.createElement("span");
-        hour.className = "line-tt-hour";
-        hour.textContent = pad2(row.hour);
-        const mins = document.createElement("span");
-        mins.className = "line-tt-mins";
         for (const min of row.minutes) {
-          const m = document.createElement("span");
-          m.className = "line-tt-min";
-          m.textContent = pad2(min);
-          mins.appendChild(m);
+          const t = document.createElement("span");
+          t.className = "line-tt-time" + (first ? " is-next" : "");
+          t.textContent = pad2(row.hour) + ":" + pad2(min);
+          times.appendChild(t);
+          first = false;
         }
-        r.append(hour, mins);
-        board.appendChild(r);
       }
+      board.appendChild(times);
       return board;
     }
 
@@ -995,16 +1005,30 @@ message ResponseStopDTO {
       lineFootEl.className = "line-foot" + (kind ? " " + kind : "");
     }
 
-    function updateVehicleFoot(line) {
+    function vehicleCountForDir(dir) {
       const list = lastPlottedVehicles || [];
-      const thisWay = list.filter((v) => v.direction == null || Number(v.direction) === detailDir).length;
-      const dest = directionLabel(detailDir);
-      if (!thisWay) {
-        setLineFoot("Niciun vehicul spre " + dest);
-        return;
-      }
-      const way = thisWay === 1 ? "1 vehicul spre " + dest : thisWay + " vehicule spre " + dest;
-      setLineFoot(way, "ok");
+      return list.filter((v) => v.direction == null || Number(v.direction) === dir).length;
+    }
+
+    function vehicleCountLabel(n) {
+      if (!n) return "Niciun vehicul";
+      return countLabel(n, "vehicul", "vehicule");
+    }
+
+    // Romanian numerals take "de" from twenty up: 20 de stații, 21 de vehicule.
+    function countUnit(n, singular, plural) {
+      return (n >= 20 ? "de " : "") + (n === 1 ? singular : plural);
+    }
+
+    function countLabel(n, singular, plural) {
+      return n + " " + countUnit(n, singular, plural);
+    }
+
+    function updateDirVehicleCounts() {
+      document.querySelectorAll(".line-dir-count").forEach((el) => {
+        el.textContent = vehicleCountLabel(vehicleCountForDir(Number(el.dataset.dir)));
+      });
+      setLineFoot("");
     }
 
     function lineInfoBits(line, detail, packLine) {
@@ -1017,15 +1041,16 @@ message ResponseStopDTO {
       else if (orgName) bits.push(orgName);
       const sms = protoStr(detail, "ticket_sms", "ticketSms") || protoStr(packLine, "ticket_sms", "ticketSms");
       const price = protoStr(detail, "price_ticket_sms", "priceTicketSms") || protoStr(packLine, "price_ticket_sms", "priceTicketSms");
-      if (sms && price) bits.push("Bilet SMS " + price + " la " + sms);
+      if (sms && price) bits.push("Bilet SMS la " + sms + " (" + price + " lei)");
       else if (sms) bits.push("Bilet SMS la " + sms);
-      const cap = packLine && (packLine.current_capacity != null ? packLine.current_capacity : packLine.currentCapacity);
-      if (cap != null && cap !== "") bits.push("Sarcină " + cap);
       return bits;
     }
 
     function renderLinePage() {
       const line = selectedLine;
+      const prevStops = linePageEl.querySelector(".line-stop-list");
+      if (prevStops) stopListScroll = prevStops.scrollTop;
+      stopListEl = null; // ignore scroll events from the list we are replacing
       linePageEl.replaceChildren();
       if (!line) return;
 
@@ -1033,7 +1058,7 @@ message ResponseStopDTO {
       const label = document.createElement("p");
       label.className = "line-dirs-label";
       label.id = "lineDirsLabel";
-      label.textContent = "In spre capătul";
+      label.textContent = "Direcție";
       const dirs = document.createElement("div");
       dirs.className = "line-dirs";
       dirs.setAttribute("role", "group");
@@ -1059,11 +1084,23 @@ message ResponseStopDTO {
         btn.setAttribute("aria-pressed", String(dir === detailDir));
         const kicker = document.createElement("span");
         kicker.className = "line-dir-kicker";
-        kicker.textContent = "Ultima stație";
         const name = document.createElement("span");
         name.className = "line-dir-name";
-        name.textContent = directionLabel(dir);
-        btn.append(kicker, name);
+        const dirName = directionLabel(dir);
+        // Without a terminus name "Spre …" would read as "Spre Se încarcă…".
+        if (dirName) {
+          kicker.textContent = "Spre";
+          name.textContent = dirName;
+          btn.append(kicker, name);
+        } else {
+          name.textContent = "Se încarcă…";
+          btn.appendChild(name);
+        }
+        const count = document.createElement("span");
+        count.className = "line-dir-count";
+        count.dataset.dir = String(dir);
+        count.textContent = vehicleCountLabel(vehicleCountForDir(dir));
+        btn.appendChild(count);
         btn.addEventListener("click", () => setLineDirection(dir));
         dirs.appendChild(btn);
       }
@@ -1087,7 +1124,7 @@ message ResponseStopDTO {
         const nextSec = document.createElement("section");
         nextSec.className = "line-next";
         const nextH = document.createElement("h2");
-        nextH.textContent = "Următorul";
+        nextH.textContent = arrivals.length === 1 ? "Următoarea sosire" : "Următoarele sosiri";
         nextSec.appendChild(nextH);
         if (stopName) {
           const from = document.createElement("p");
@@ -1103,30 +1140,33 @@ message ResponseStopDTO {
           if (arrivals[0] && arrivals[0].scheduled) {
             const flag = document.createElement("p");
             flag.className = "line-from";
-        flag.textContent = "Ore din orar";
+            flag.textContent = "Din orar";
             nextSec.appendChild(flag);
           }
         } else {
           const empty = document.createElement("p");
           empty.className = "line-tt-empty";
-          empty.textContent = pack ? "Nicio sosire afișată la stația din apropiere." : "Nicio oră pentru această direcție.";
+          empty.textContent = pack ? "Nicio sosire la stația din apropiere." : "Nicio sosire pentru această direcție.";
           nextSec.appendChild(empty);
         }
         linePageEl.appendChild(nextSec);
 
         const hours = (packLine && packLine.timetable) || [];
         let rows = remainingTimetable(hours);
+        const fromTimetable = rows.length > 0;
         if (!rows.length) rows = remainingFromArrivals(packLine);
         if (rows.length || hours.length) {
           const tt = document.createElement("section");
           tt.className = "line-tt";
           const ttH = document.createElement("h2");
-          ttH.textContent = "Rămase astăzi";
+          // Arrival-derived rows are not a published timetable, so they are not
+          // labelled "Orarul de azi"; they are just clock times left today.
+          ttH.textContent = rows.length && !fromTimetable ? "Restul zilei" : "Orarul de azi";
           tt.appendChild(ttH);
           if (!rows.length) {
             const empty = document.createElement("p");
             empty.className = "line-tt-empty";
-            empty.textContent = "Nicio cursă rămasă astăzi.";
+            empty.textContent = "Nicio cursă în restul zilei.";
             tt.appendChild(empty);
           } else {
             tt.appendChild(renderTimetableBoard(rows));
@@ -1135,36 +1175,12 @@ message ResponseStopDTO {
         }
       }
 
-      const bits = lineInfoBits(line, detailDetail, lineStopPack && lineStopPack.line);
-      const lineAccess = lineIsAccessible(detailDetail) ||
-        lineIsAccessible(lineStopPack && lineStopPack.line) || lineIsAccessible(line);
-      if (bits.length || lineAccess) {
-        const info = document.createElement("section");
-        info.className = "line-info";
-        const infoH = document.createElement("h2");
-        infoH.textContent = "Linia";
-        info.appendChild(infoH);
-        for (const bit of bits) {
-          const p = document.createElement("p");
-          p.textContent = bit;
-          info.appendChild(p);
-        }
-        if (lineAccess) {
-          const p = document.createElement("p");
-          p.className = "line-access";
-          p.appendChild(accessIconEl(false));
-          p.appendChild(document.createTextNode("Vehicule accesibile pe această linie"));
-          info.appendChild(p);
-        }
-        linePageEl.appendChild(info);
-      }
-
       const stops = dirStops[detailDir] || [];
       if (stops.length) {
         const sec = document.createElement("section");
         sec.className = "line-stops";
         const h = document.createElement("h2");
-        h.textContent = stops.length === 1 ? "1 stație" : stops.length + " stații";
+        h.textContent = countLabel(stops.length, "stație", "stații");
         sec.appendChild(h);
         const near = nearestStops(stops, 1)[0];
         const list = document.createElement("div");
@@ -1199,7 +1215,76 @@ message ResponseStopDTO {
         }
         sec.appendChild(list);
         linePageEl.appendChild(sec);
+        alignStopList(list);
       }
+
+      const bits = lineInfoBits(line, detailDetail, lineStopPack && lineStopPack.line);
+      const lineAccess = lineIsAccessible(detailDetail) ||
+        lineIsAccessible(lineStopPack && lineStopPack.line) || lineIsAccessible(line);
+      if (bits.length || lineAccess) {
+        const info = document.createElement("section");
+        info.className = "line-info";
+        const infoH = document.createElement("h2");
+        infoH.textContent = "Linia";
+        info.appendChild(infoH);
+        for (const bit of bits) {
+          const p = document.createElement("p");
+          p.textContent = bit;
+          info.appendChild(p);
+        }
+        if (lineAccess) {
+          const p = document.createElement("p");
+          p.className = "line-access";
+          p.appendChild(accessIconEl(false));
+          p.appendChild(document.createTextNode("Vehicule accesibile pe această linie"));
+          info.appendChild(p);
+        }
+        linePageEl.appendChild(info);
+      }
+    }
+
+    // Open the stop list with the nearest stop as the first visible row, so the
+    // rider reads from where they are; earlier stops sit above, scrolled away.
+    function alignStopList(list) {
+      stopListEl = list;
+      const place = () => {
+        if (list !== stopListEl) return;
+        if (!stopListPinned) {
+          list.scrollTop = stopListScroll;
+          return;
+        }
+        const near = list.querySelector(".line-stop.is-near");
+        if (!near) return;
+        // Nudge rather than assign: the list may already be scrolled, and this
+        // runs again after layout settles, so it has to be idempotent.
+        const offset = near.getBoundingClientRect().top - list.getBoundingClientRect().top;
+        list.scrollTop = Math.max(0, list.scrollTop + offset);
+        stopListScroll = list.scrollTop;
+      };
+      place();
+      // The panel can finish layout (or become visible) after this render, and
+      // webfonts change row heights, so keep placing until the rider scrolls.
+      requestAnimationFrame(place);
+      if (typeof ResizeObserver === "function") {
+        const ro = new ResizeObserver(() => {
+          if (list !== stopListEl) {
+            ro.disconnect();
+            return;
+          }
+          place();
+        });
+        ro.observe(list);
+      }
+      list.addEventListener(
+        "scroll",
+        () => {
+          if (list !== stopListEl) return; // events from lists we replaced
+          if (list.scrollTop === stopListScroll) return; // our own placement
+          stopListPinned = false;
+          stopListScroll = list.scrollTop;
+        },
+        { passive: true }
+      );
     }
 
     async function setLineDirection(dir, opts) {
@@ -1213,12 +1298,13 @@ message ResponseStopDTO {
       plotStops(pathStopsOverride || [], { keepView: true });
       drawDirRoutes(line.color, { fit: false });
       if (lastPlottedVehicles.length) plotVehicles(lastPlottedVehicles, line.color);
-      updateVehicleFoot(line);
+      updateDirVehicleCounts();
       if (same) {
         renderLinePage();
         return;
       }
       lineStopPack = undefined;
+      stopListPinned = true;
       renderLinePage();
       const pack = await lineAtNearestStop(line.id, dir);
       if (String(selectedLineId) !== String(line.id) || detailDir !== dir) return;
@@ -1272,7 +1358,9 @@ message ResponseStopDTO {
     function etaValue(next) {
       const val = document.createElement("span");
       const label = String((next && next.label) || "");
-      const isNow = /now/i.test(label);
+      const isNow = next && next.now != null
+        ? !!next.now
+        : /^(acum|now)$/i.test(label.trim());
       val.className = "eta-val" + (next && next.scheduled ? " is-sked" : "") + (isNow ? " is-now" : "");
       if (isNow) {
         val.textContent = "ACUM";
@@ -1807,7 +1895,7 @@ message ResponseStopDTO {
         setLinesListMessage("Nicio stație în apropiere de unde să colectez linii.");
         return;
       }
-      setLinesCount("Se încarcă linii de la " + ranked.length + " stații…");
+      setLinesCount("Se încarcă linii de la " + countLabel(ranked.length, "stație", "stații") + "…");
       const byId = new Map();
       try {
         const batches = await Promise.all(
@@ -2158,7 +2246,7 @@ message ResponseStopDTO {
         });
         lastPlottedVehicles = list;
         plotVehicles(list, line.color);
-        updateVehicleFoot(line);
+        updateDirVehicleCounts();
       } catch (e) {
         if (gen !== vehicleGen) return;
         console.error(e);
@@ -2261,6 +2349,8 @@ message ResponseStopDTO {
       detailDir = initialDir(line);
       lineStopPack = undefined;
       dirTouched = false;
+      stopListPinned = true;
+      stopListScroll = 0;
       setLineHash(line.id);
       setLineBar(line);
       setLineFoot("Se încarcă vehiculele…");
@@ -2304,7 +2394,7 @@ message ResponseStopDTO {
         await setLineDirection(detailDir, { force: true });
         if (String(selectedLineId) !== String(line.id)) return;
         if (!ok) setLineFoot("Nicio rută desenată pentru această linie", "warn");
-        else updateVehicleFoot(line);
+        else updateDirVehicleCounts();
       } catch (e) {
         console.error(e);
         setLineFoot((e.message || "eroare linie") + (e.status ? " (" + e.status + ")" : ""), "err");
@@ -2337,7 +2427,8 @@ message ResponseStopDTO {
           clearStops();
         } else {
           const n = plotStops(lastStops);
-          statusEl.innerHTML = '<span class="count">' + n + "</span> stații în apropiere";
+          statusEl.innerHTML =
+            '<span class="count">' + n + "</span> " + countUnit(n, "stație", "stații") + " în apropiere";
           statusEl.className = "hud-status ok";
         }
         if (selectedLineId == null) await loadNearbyLines(lastStops);
@@ -2428,28 +2519,73 @@ message ResponseStopDTO {
       if ("open" in el) el.open = false;
     }
 
-    function LocateControl() {}
-    LocateControl.prototype.onAdd = function () {
-      const wrap = document.createElement("div");
-      wrap.className = "maplibregl-ctrl maplibregl-ctrl-group";
+    // One rail, three actions, one 44px target each. The zoom buttons know
+    // their own limits so they switch off at the ends of the range instead of
+    // silently doing nothing; locate keeps the amber fill and reports a busy
+    // state while the browser is locating.
+    function railButton(className, label, onClick) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "map-locate";
-      btn.setAttribute("aria-label", "Locația mea");
-      btn.innerHTML = '<span class="map-locate-icon" aria-hidden="true"></span>';
+      btn.className = "map-rail-btn " + className;
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
+      btn.innerHTML = '<span class="map-rail-icon" aria-hidden="true"></span>';
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
+        onClick();
+      });
+      return btn;
+    }
+
+    function zoomDuration() {
+      return prefersReducedMotion() ? 0 : 220;
+    }
+
+    function MapRailControl() {}
+    MapRailControl.prototype.onAdd = function (mapInstance) {
+      const wrap = document.createElement("div");
+      wrap.className = "maplibregl-ctrl maplibregl-ctrl-group map-rail";
+      wrap.setAttribute("role", "group");
+      wrap.setAttribute("aria-label", "Controale hartă");
+
+      const zoomIn = railButton("map-zoom-in", "Mărește", () => {
+        mapInstance.zoomIn({ duration: zoomDuration() });
+      });
+      const zoomOut = railButton("map-zoom-out", "Micșorează", () => {
+        mapInstance.zoomOut({ duration: zoomDuration() });
+      });
+      const locateBtn = railButton("map-locate", "Locația mea", () => {
         recenterOnUser();
       });
-      wrap.appendChild(btn);
+
+      const syncZoomState = () => {
+        const zoom = mapInstance.getZoom();
+        zoomIn.disabled = zoom >= mapInstance.getMaxZoom() - 0.01;
+        zoomOut.disabled = zoom <= mapInstance.getMinZoom() + 0.01;
+      };
+      this._map = mapInstance;
+      this._syncZoomState = syncZoomState;
+      mapInstance.on("zoom", syncZoomState);
+      mapInstance.on("zoomend", syncZoomState);
+
+      wrap.appendChild(zoomIn);
+      wrap.appendChild(zoomOut);
+      wrap.appendChild(locateBtn);
       this._container = wrap;
+      syncZoomState();
       return wrap;
     };
-    LocateControl.prototype.onRemove = function () {
+    MapRailControl.prototype.onRemove = function () {
+      if (this._map && this._syncZoomState) {
+        this._map.off("zoom", this._syncZoomState);
+        this._map.off("zoomend", this._syncZoomState);
+      }
       if (this._container && this._container.parentNode) {
         this._container.parentNode.removeChild(this._container);
       }
       this._container = null;
+      this._map = null;
+      this._syncZoomState = null;
     };
 
     function ensureOverlayLayers() {
@@ -2602,9 +2738,8 @@ message ResponseStopDTO {
       map.dragRotate.disable();
       if (map.touchPitch) map.touchPitch.disable();
       if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
-      map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
-      map.addControl(new maplibregl.NavigationControl({ showCompass: false, visualizePitch: false }), "bottom-right");
-      map.addControl(new LocateControl(), "bottom-right");
+      map.addControl(new MapRailControl(), "top-right");
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
       await whenMapReady();
       collapseAttribution();
       map.once("idle", collapseAttribution);

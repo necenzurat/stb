@@ -23,7 +23,9 @@
   /* --- Ink (warm near-white down to faint labels) -------------------- */
   --ink: oklch(0.96 0.008 90);
   --ink-dim: oklch(0.74 0.012 255);
-  --ink-faint: oklch(0.58 0.016 255);
+  /* L0.66 keeps small caption/label text at WCAG AA (>=4.5:1) on both the
+     board and the raised row/button surfaces. */
+  --ink-faint: oklch(0.66 0.015 255);
 
   /* --- Live signal: the one accent (countdown-board amber) ----------- */
   --live: oklch(0.83 0.155 78);
