@@ -102,7 +102,6 @@ message ResponseStopDTO {
     const lineBarRoute = document.getElementById("lineBarRoute");
     const statusEl = document.getElementById("status");
     const backBtn = document.getElementById("backBtn");
-    const boardTitleEl = document.getElementById("boardTitle");
     const linesCountEl = document.getElementById("linesCount");
     const linesListEl = document.getElementById("linesList");
     const gripEl = document.getElementById("grip");
@@ -1334,10 +1333,6 @@ message ResponseStopDTO {
       return obj.segment_path || obj.segmentPath || "";
     }
 
-    function setBoardTitle(text) {
-      boardTitleEl.textContent = text;
-    }
-
     function lineDest(line) {
       return (line && (line.dest || line.direction_name || line.directionName)) || "";
     }
@@ -1618,7 +1613,6 @@ message ResponseStopDTO {
 
     function runSearch(q) {
       const gen = ++searchGen;
-      setBoardTitle("Căutare");
       setLinesListMessage("Se caută\u2026");
       apiJson("/places?query=" + encodeURIComponent(q))
         .then((json) => {
@@ -1639,7 +1633,6 @@ message ResponseStopDTO {
       searchGen++;
       searchInput.value = "";
       searchClear.hidden = true;
-      setBoardTitle(selectedLineId != null && selectedLine ? lineHeadline(selectedLine) : "Aproape");
       renderBoard();
     }
 
@@ -1770,7 +1763,6 @@ message ResponseStopDTO {
         if (searchResults) {
           searchResults = null;
           searchGen++;
-          setBoardTitle(selectedLineId != null && selectedLine ? lineHeadline(selectedLine) : "Aproape");
           renderBoard();
         }
         return;
@@ -1852,7 +1844,6 @@ message ResponseStopDTO {
       lastPlottedVehicles = [];
       clearRoute();
       closeStopPopup();
-      setBoardTitle("Aproape");
       linePageEl.replaceChildren();
       setLineFoot("Se încarcă linia…");
       setLineBar(null);
@@ -2720,7 +2711,7 @@ message ResponseStopDTO {
       LineDetailType = protoRoot.lookupType("ro.radcom.rp.protofiles.generate.ResponseGetLineDTO");
       VehiclesType = protoRoot.lookupType("ro.radcom.rp.protofiles.generate.ResponseGetVehiclesDTO");
 
-      renderChips();
+      //renderChips();
       startClock();
       setupSheet();
 
