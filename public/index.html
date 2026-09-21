@@ -41,9 +41,8 @@
         <input id="searchInput" type="search" placeholder="Caută stație sau loc" autocomplete="off" spellcheck="false" aria-label="Caută stații și locuri" />
         <button type="button" class="hud-search-clear" id="searchClear" hidden aria-label="Șterge căutarea">×</button>
       </div>
-      <div class="hud-chips" id="chips" role="group" aria-label="Filtrează linii"></div>
+      <!-- <div class="hud-chips" id="chips" role="group" aria-label="Filtrează linii"></div> -->
       <div class="hud-board-head">
-        <h1 id="boardTitle">Aproape</h1>
         <p class="hud-count" id="linesCount">Aștept locația…</p>
       </div>
       <p class="hud-status" id="status" aria-live="polite">Se localizează…</p>
@@ -53,8 +52,6 @@
     <div class="hud-line" id="lineView" hidden>
       <header class="line-bar">
         <button type="button" class="line-back" id="backBtn" aria-label="Înapoi la stațiile din apropiere">
-          <span class="line-back-chevron" aria-hidden="true">←</span>
-          Aproape
         </button>
         <span class="line-bar-route" id="lineBarRoute" hidden></span>
       </header>
