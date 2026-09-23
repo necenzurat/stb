@@ -1657,6 +1657,7 @@ message ResponseStopDTO {
     let sheetSnaps = [];
     let sheetIndex = 0;
     let dragState = null;
+    const SHEET_TAP_SLOP = 6;
 
     function measureSnaps() {
       if (!isCompactLayout()) {
@@ -1695,7 +1696,17 @@ message ResponseStopDTO {
       sheetIndex = Math.max(0, Math.min(sheetSnaps.length - 1, i));
       hudEl.classList.remove("dragging");
       applySheetY(sheetSnaps[sheetIndex]);
+      const collapsed = sheetIndex === sheetSnaps.length - 1;
+      if (gripEl) {
+        gripEl.setAttribute("aria-expanded", String(!collapsed));
+        gripEl.setAttribute("aria-label", collapsed ? "Extinde panoul" : "Restrânge panoul");
+      }
       syncMapPadding();
+    }
+
+    function toggleSheet() {
+      const collapsedIndex = sheetSnaps.length - 1;
+      setSheetIndex(sheetIndex === collapsedIndex ? 0 : collapsedIndex, true);
     }
 
     function setupSheet() {
@@ -1710,19 +1721,28 @@ message ResponseStopDTO {
         dragState = {
           startY: ev.clientY,
           startOffset: sheetSnaps[sheetIndex] || 0,
+          fromGrip: ev.currentTarget === gripEl,
+          moved: false,
         };
         hudEl.classList.add("dragging");
       };
       const onMove = (ev) => {
         if (!dragState) return;
         const dy = ev.clientY - dragState.startY;
+        if (Math.abs(dy) > SHEET_TAP_SLOP) dragState.moved = true;
         const full = sheetSnaps[0] || 0;
         const peek = sheetSnaps[sheetSnaps.length - 1] || 0;
         applySheetY(Math.max(full, Math.min(peek, dragState.startOffset + dy)));
         if (ev.cancelable) ev.preventDefault();
       };
-      const onUp = () => {
+      const onUp = (ev) => {
         if (!dragState) return;
+        const wasGripTap = ev.type === "pointerup" && dragState.fromGrip && !dragState.moved;
+        dragState = null;
+        if (wasGripTap) {
+          toggleSheet();
+          return;
+        }
         const y = parseFloat(document.documentElement.style.getPropertyValue("--sheet-y")) || 0;
         let best = 0;
         let bestD = Infinity;
@@ -1733,10 +1753,14 @@ message ResponseStopDTO {
             best = i;
           }
         });
-        dragState = null;
         setSheetIndex(best, true);
       };
-      if (gripEl) gripEl.addEventListener("pointerdown", onDown);
+      if (gripEl) {
+        gripEl.addEventListener("pointerdown", onDown);
+        gripEl.addEventListener("click", (ev) => {
+          if (ev.detail === 0) toggleSheet();
+        });
+      }
       const top = hudEl.querySelector(".hud-top");
       if (top) {
         top.addEventListener("pointerdown", (ev) => {
@@ -2495,6 +2519,7 @@ message ResponseStopDTO {
           center: [loc.lng, loc.lat],
           zoom: Math.max(MAP_ZOOM.minimum, MAP_ZOOM.initial - MAP_ZOOM.userLocationReduction),
         });
+        console.log("User location zoom:", map.getZoom());
         if (loc.fallback && selectedLineId == null) {
           setStatus("Fallback locație: centrul București (" + loc.reason + ")", "warn");
         }
@@ -2757,6 +2782,7 @@ message ResponseStopDTO {
         center: [loc.lng, loc.lat],
         zoom: Math.max(MAP_ZOOM.minimum, MAP_ZOOM.initial - MAP_ZOOM.userLocationReduction),
       });
+      console.log("User location zoom:", map.getZoom());
       map.resize();
       if (loc.fallback) setStatus("Fallback locație: centrul București (" + loc.reason + ")", "warn");
 

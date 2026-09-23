@@ -61,6 +61,13 @@
 
 .hud-grip {
   display: none;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
 }
 
 /* --- Header: a small mark and the station clock --------------------- */
@@ -1315,11 +1322,19 @@
 
   .hud-grip {
     display: flex;
+    align-items: center;
     justify-content: center;
-    padding: 9px 0 3px;
     touch-action: none;
     cursor: grab;
     flex-shrink: 0;
+  }
+
+  .hud-grip:focus-visible {
+    outline-offset: -4px;
+  }
+
+  .hud.dragging .hud-grip {
+    cursor: grabbing;
   }
 
   .hud-grip span {
