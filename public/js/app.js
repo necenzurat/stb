@@ -9,6 +9,7 @@
       maximum: 18,
       fitBoundsMaximum: 14,
       routeOverviewReduction: 3,
+      userLocationReduction: 3,
     });
 
     const LS_APP = "appId";
@@ -2490,7 +2491,10 @@ message ResponseStopDTO {
         const loc = await locate();
         setUserLoc(loc.lat, loc.lng, loc.acc);
         map.stop();
-        map.jumpTo({ center: [loc.lng, loc.lat], zoom: MAP_ZOOM.initial });
+        map.jumpTo({
+          center: [loc.lng, loc.lat],
+          zoom: Math.max(MAP_ZOOM.minimum, MAP_ZOOM.initial - MAP_ZOOM.userLocationReduction),
+        });
         if (loc.fallback && selectedLineId == null) {
           setStatus("Fallback locație: centrul București (" + loc.reason + ")", "warn");
         }
@@ -2749,7 +2753,10 @@ message ResponseStopDTO {
       setStatus("Se solicită locația…");
       const loc = await locate();
       setUserLoc(loc.lat, loc.lng, loc.acc);
-      map.jumpTo({ center: [loc.lng, loc.lat], zoom: MAP_ZOOM.initial });
+      map.jumpTo({
+        center: [loc.lng, loc.lat],
+        zoom: Math.max(MAP_ZOOM.minimum, MAP_ZOOM.initial - MAP_ZOOM.userLocationReduction),
+      });
       map.resize();
       if (loc.fallback) setStatus("Fallback locație: centrul București (" + loc.reason + ")", "warn");
 
