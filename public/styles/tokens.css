@@ -1,12 +1,12 @@
 /* ==========================================================================
    Design tokens — the departure board
-   A dark, glanceable transit display that floats on the light map. One source
-   of truth for color, type, space, radius, shadow and motion. Colors are OKLCH
+   A dark, glanceable transit display that floats on the map. One source of
+   truth for color, type, space, radius, shadow and motion. Colors are OKLCH
    so lightness and chroma stay perceptually even; nothing hard-codes a value.
 
    Two worlds live here on purpose:
-   - BOARD tokens: the dark overlay panel (bright ink, amber live signal).
-   - MAP tokens: markers drawn on the light Positron map (dark ink, light casing).
+   - BOARD tokens: the dark navigation and departure surface.
+   - MAP tokens: blue location, pale map labels, and bright vehicle casing.
    Keep them apart. A board color on a map marker (or vice versa) will read wrong.
    ========================================================================== */
 
@@ -14,51 +14,65 @@
   color-scheme: dark;
 
   /* --- Board surfaces (cool-tinted slate, never pure black) ---------- */
-  --board: oklch(0.19 0.014 255);
-  --board-raised: oklch(0.235 0.015 255);
-  --board-sunken: oklch(0.15 0.016 255);
-  --hairline: oklch(1 0 0 / 0.08);
-  --hairline-strong: oklch(1 0 0 / 0.15);
+  --board: oklch(0.135 0.018 245);
+  --board-raised: oklch(0.19 0.022 245);
+  --board-sunken: oklch(0.105 0.018 245);
+  --hairline: oklch(0.95 0.01 220 / 0.1);
+  --hairline-strong: oklch(0.95 0.01 220 / 0.17);
 
-  /* --- Ink (warm near-white down to faint labels) -------------------- */
-  --ink: oklch(0.96 0.008 90);
-  --ink-dim: oklch(0.74 0.012 255);
-  /* L0.66 keeps small caption/label text at WCAG AA (>=4.5:1) on both the
-     board and the raised row/button surfaces. */
-  --ink-faint: oklch(0.66 0.015 255);
+  /* --- Ink (cool near-white down to faint labels) -------------------- */
+  --ink: oklch(0.96 0.01 220);
+  --ink-dim: oklch(0.76 0.02 225);
+  /* L0.67 keeps small caption/label text readable on both dark surfaces. */
+  --ink-faint: oklch(0.67 0.022 225);
 
   /* --- Live signal: the one accent (countdown-board amber) ----------- */
   --live: oklch(0.83 0.155 78);
   --live-soft: oklch(0.83 0.155 78 / 0.15);
   --live-ink: oklch(0.24 0.04 78);
-  --ring: var(--live);
+  --ring: var(--map-accent);
 
   /* --- Status ------------------------------------------------------- */
   --err: oklch(0.7 0.19 25);
   --warn: oklch(0.8 0.15 60);
   --ok: oklch(0.8 0.14 155);
 
-  /* --- Map world: markers on the light map -------------------------- */
-  --on-map: oklch(0.99 0 0);          /* casings / marker borders */
-  --map-ink: oklch(0.29 0.02 255);    /* stop dots, route fallback */
-  --map-you: var(--live);             /* you-are-here beacon */
+  /* --- Map world: dark cartography, blue location, pale labels ------- */
+  --map-accent: oklch(0.72 0.16 238);
+  --map-accent-soft: oklch(0.72 0.16 238 / 0.16);
+  --map-accent-ink: oklch(0.16 0.04 238);
+  --map-control: oklch(0.17 0.02 245);
+  --map-control-raised: oklch(0.22 0.025 245);
+  --map-label: oklch(0.88 0.025 220);
+  --on-map: oklch(0.9 0.02 220);
+  --map-ink: oklch(0.9 0.02 220);
+  --map-you: var(--map-accent);
 
-  /* --- Type: one grotesque for labels, one mono for times ----------- */
-  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --mode-bus: #4b9bff;
+  --mode-trolleybus: #37c7b4;
+  --mode-tram: #ffb84d;
+  --mode-subway: #b58cff;
+  --mode-train: #ff7396;
+  --mode-ferry: #58d2ff;
+  --mode-walk: #a7b5bf;
+  --mode-other: #c7d0d6;
 
-  /* --- Radius (rectilinear, like a real display) -------------------- */
-  --radius-xs: 6px;
-  --radius-sm: 8px;
-  --radius: 10px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  /* --- Type: native system first, web fonts as a stable fallback ---- */
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+  /* --- Radius (soft enough for a map chrome, not a toy) ------------- */
+  --radius-xs: 7px;
+  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
   --radius-pill: 999px;
 
   /* --- Shadow: the board lifts off the map -------------------------- */
-  --shadow-panel: 0 10px 34px oklch(0 0 0 / 0.32), 0 2px 8px oklch(0 0 0 / 0.24);
-  --shadow-pop: 0 12px 40px oklch(0 0 0 / 0.4);
-  --shadow-marker: 0 1px 5px oklch(0 0 0 / 0.45);
+  --shadow-panel: 0 18px 44px oklch(0.02 0.02 245 / 0.38), 0 2px 10px oklch(0.02 0.02 245 / 0.26);
+  --shadow-pop: 0 16px 40px oklch(0.02 0.02 245 / 0.46);
+  --shadow-marker: 0 1px 5px oklch(0.02 0.02 245 / 0.48);
 
   /* --- Motion (product range: quick, ease-out, no bounce) ----------- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -67,7 +81,7 @@
   --dur-slow: 520ms;
 
   /* --- Layout ------------------------------------------------------- */
-  --hud-width: 372px;
+  --hud-width: 360px;
   --hud-gap: 12px;
 
   /* Runtime values written by js/app.js. Declared so every consumer

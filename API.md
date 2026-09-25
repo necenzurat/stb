@@ -7,7 +7,7 @@ Derived from the app bundle (`main-es2015.*.js`) and verified with live requests
 - **Base URL:** `https://info.stb.ro/api/web/v2-6`
 - **SSO base:** `https://info.stb.ro/websso`
 - **Backend:** Spring (Tomcat 9). Errors are Tomcat HTML pages (400/404/500) or plain JSON/text.
-- **Encoding:** JSON for most endpoints; **Protobuf (proto2)** for the lines/stops/vehicles/routes endpoints (`Content-Type: application/octet-stream`). Schema in [Protobuf schema](#protobuf-schema).
+- **Encoding:** JSON for most endpoints; **Protobuf (proto2)** for the lines/stops/vehicles/routes endpoints upstream (`Content-Type: application/octet-stream`). The app proxy decodes those protobuf responses to JSON before they reach the browser. Schema in [Protobuf schema](#protobuf-schema).
 - **CORS:** `Access-Control-Allow-Origin: *`.
 
 ---
@@ -22,14 +22,18 @@ Every request must carry these headers, otherwise Tomcat returns `400 Missing re
 
 | Header | Value | Notes |
 |---|---|---|
-| `App-Id` | UUID v4 | Generated once per client, persisted (localStorage `App-Id`). |
-| `User-Info` | bcrypt-looking token | Obtained from `GET /proxy/user/auth` (see below). Bound to `App-Id`, `Lang` and `Source`. Empty string is accepted by the header check but rejected later. |
+| `App-Id` | UUID v4 | Generated and cached by the app proxy/runtime. |
+| `User-Info` | bcrypt-looking token | Obtained and cached by the app proxy/runtime. Bound to the server-owned `App-Id`, `Lang` and `Source`. |
 | `OS-Type` | `Web` | |
 | `App-Version` | e.g. `2.6.0` | Any non-empty string works. |
 | `Device-Name` | e.g. `Chrome` | Any non-empty string works. |
 | `OS-Version` | e.g. `5.0` | Any non-empty string works. |
 | `Lang` | `ro` \| `en` | Must match the value used when the `User-Info` token was issued, else `412`. |
 | `Source` | `ro.radcom.smartcity.web` | Must be present, else `412`. |
+
+The browser does not send the device-layer headers. The Node proxy and Worker
+add them server-side, cache the server-owned `User-Info` token, and refresh it
+when the upstream returns `401` or `412`.
 
 Status semantics:
 
@@ -40,7 +44,9 @@ Status semantics:
 
 #### `GET /proxy/user/auth` — obtain `User-Info`
 
-Headers: all of the above **plus** `App-key: gcALgRyZHC,qFonZ=Jde` (constant baked into the web bundle, `environment.userInfoAppKey`). `User-Info` not needed for this call.
+Headers: all of the above **plus** the server-side `App-key`. The browser does
+not send this header; the proxy adds it only for the authentication call.
+`User-Info` is not needed for this call.
 
 ```json
 { "data": { "userInfo": "$2a$10$..." } }
@@ -172,9 +178,12 @@ Stop details as JSON (client requests `arraybuffer` but server answers `applicat
 #### `GET /server/date`
 Declared in the bundle; currently returns `500` (backend proxy I/O error). Unused in practice.
 
-### 2.2 Protobuf (response `application/octet-stream`)
+### 2.2 Protobuf upstream, JSON proxy response
 
-Decode with the schema below. Numeric `int64` fields decode as strings in `protobuf-json` output.
+The upstream response is `application/octet-stream`. The local Node and
+Cloudflare Worker proxies decode it with the schema below and return JSON to
+the browser. Numeric `int64` fields are serialized as strings, and protobuf
+field names use the JavaScript camel-case form (`arrivingTime`, `segmentPath`).
 
 | Method | Path | Response message | Purpose |
 |---|---|---|---|
@@ -187,7 +196,17 @@ Decode with the schema below. Numeric `int64` fields decode as strings in `proto
 | `GET` | `/lines/v2/home/stops/{swLat}/{swLng}/{neLat}/{neLng}` | `ResponseGetHomeStopsDTO` | Stops within a map bounding box (Google `LatLngBounds.toUrlValue()` with `,`→`/`). Client only calls at zoom ≥ 15. |
 | `POST` | `/routes` | `Routes` | Trip planner. JSON request body (below). |
 
-Arrival semantics (`TimesDTO`): `arrivingTime` = seconds until arrival, `-1`/absent = unknown, `timetable=true` = value from schedule rather than live AVL; `has_disability` = accessible vehicle.
+#### mo-bi vehicle enrichment
+
+The server may add a `mobi` object to vehicles returned by
+`/lines/v2/{line_id}/vehicles/{direction}`. It comes from the public
+`https://mo-bi.ro/python_api` feed and is cached server-side. The object can
+contain `licensePlate`, `passengerCount`, `passengerTimestamp`,
+`positionTimestamp`, `sourceTimestamp`, `sourceId`, `routeId`, `direction`, and
+`tripStartTime`. Passenger fields can be null or stale; no capacity or
+occupancy percentage is inferred.
+
+Arrival semantics (`TimesDTO`): `arrivingTime` = seconds until arrival, `-1`/absent = unknown, `timetable=true` = value from schedule rather than live AVL; `has_disability` = accessible vehicle. The app requests stop timetable data with `timetable=true` and merges the returned schedule with the stop organization metadata.
 
 #### `POST /routes` — trip planner
 

@@ -10,18 +10,18 @@
   position: relative;
   display: flex;
   align-items: center;
-  height: 44px;
-  background: var(--board-sunken);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
+  height: 42px;
+  background: var(--board-raised);
+  border: 1px solid transparent;
+  border-radius: 12px;
   transition:
     border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .field:focus-within {
-  border-color: var(--live);
-  box-shadow: 0 0 0 3px var(--live-soft);
+  border-color: var(--map-accent);
+  box-shadow: 0 0 0 3px var(--map-accent-soft);
 }
 
 .field input {

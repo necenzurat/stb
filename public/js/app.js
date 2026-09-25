@@ -1,10 +1,39 @@
     const BASE = "/api";
-    const APP_KEY = "gcALgRyZHC,qFonZ=Jde";
     const CITY = { lat: 44.4353308, lng: 26.0996553 };
+    const MAP_THEME = Object.freeze({
+      land: "#12232d",
+      water: "#0b355d",
+      park: "#12382f",
+      residential: "#172a33",
+      building: "#182a33",
+      buildingEdge: "#2a414d",
+      road: "#405866",
+      majorRoad: "#718894",
+      motorway: "#9bb1ba",
+      rail: "#395765",
+      label: "#d8e4e9",
+      labelDim: "#91a7b1",
+      halo: "#12232d",
+      routeFallback: "#4b9bd8",
+      routeCasing: "#d8e4e9",
+      stop: "#5aa9ff",
+      user: "#54a9ff",
+    });
+
+    const MODE_COLORS = Object.freeze({
+      BUS: "#4b9bff",
+      TROLLEYBUS: "#37c7b4",
+      TRAM: "#ffb84d",
+      SUBWAY: "#b58cff",
+      TRAIN: "#ff7396",
+      FERRY: "#58d2ff",
+      WALK: "#a7b5bf",
+      OTHER: "#c7d0d6",
+    });
 
     // Map zoom configuration
     const MAP_ZOOM = Object.freeze({
-      initial: 17,
+      initial: 16,
       minimum: 10,
       maximum: 18,
       fitBoundsMaximum: 14,
@@ -12,85 +41,8 @@
       userLocationReduction: 3,
     });
 
-    const LS_APP = "appId";
-    const LS_TOKEN = "userInfo";
-
     // Below this many seconds an arrival reads as "now" rather than a countdown.
     const ARRIVAL_NOW_SECONDS = 45;
-
-    const PROTO = `
-syntax = "proto2";
-package ro.radcom.rp.protofiles.generate;
-
-message ResponseGetHomeStopsDTO { repeated StopDTO stops = 1; }
-
-message Organization {
-  optional int64 id = 1; optional string code = 2; optional string name = 3;
-  optional string logo_file = 4; optional string logo = 5; optional bool is_active = 6; optional bool selected = 7;
-}
-
-message TicketOfficeSchedule { optional string weekday = 1; optional string saturday = 2; optional string sunday = 3; }
-
-message TicketOfficeDTO {
-  optional TicketOfficeSchedule ticketOfficeSchedule = 1; optional string type = 2; optional string name = 3;
-  optional string description = 4; optional double lat = 5; optional double lng = 6; optional int64 id = 7;
-  optional string icon_color = 8; optional string photo_url = 9;
-}
-
-message HoursDTO { optional string hour = 1; repeated string minutes = 2; }
-message TimesDTO { optional bool timetable = 1; optional int64 arrivingTime = 2; optional bool has_disability = 3; }
-
-message LineDTO {
-  optional int64 id = 1; optional string name = 2; optional string type = 3; optional string color = 4;
-  optional string description = 5; optional int32 direction = 6; optional string direction_name = 7;
-  optional int64 arriving_time = 8; repeated TimesDTO arriving_times = 9; optional bool is_timetable = 10;
-  repeated HoursDTO timetable = 11; optional Organization organization = 12; optional bool has_disability = 13;
-}
-
-message StopDTO {
-  optional int64 id = 1; optional double lat = 2; optional double lng = 3;
-  optional string name = 4; optional string description = 5; optional string type = 6;
-  optional int64 favorite_id = 7; optional TicketOfficeDTO ticket_office_type = 8;
-  repeated LineDTO lines = 9; optional string icon_color = 10;
-}
-
-message ResponseGetLineDTO {
-  optional int64 id = 1; optional string name = 2; optional string type = 3;
-  optional bool has_notifications = 4; optional string color = 5;
-  optional string price_ticket_sms = 6; optional string ticket_sms = 7;
-  optional Organization organization = 8; optional string segment_path = 9;
-  optional string direction_name_tur = 10; optional string direction_name_retur = 11;
-  repeated StopDTO stops = 12;
-}
-
-message ResponseGetLineVehiclesDTO {
-  optional int64 id = 1; optional double lat = 2; optional double lng = 3; optional string code = 4;
-  optional string transport_type = 5; optional bool has_disability = 6;
-}
-
-message ResponseGetVehiclesDTO {
-  repeated ResponseGetLineVehiclesDTO vehicles = 1;
-}
-
-message ResponseVehiclesDTO {
-  optional int64 id = 1; optional double lat = 2; optional double lng = 3;
-  optional string transport_type = 4; optional bool has_disability = 5;
-}
-
-message ResponseLineDTO {
-  optional string name = 1; optional int64 id = 2; optional string type = 3; optional string color = 4;
-  optional string direction_name = 5; optional int64 arriving_time = 6; optional bool is_timetable = 7;
-  optional int32 direction = 8; repeated TimesDTO arriving_times = 9; repeated HoursDTO timetable = 10;
-  optional string segment_path = 11; repeated ResponseVehiclesDTO vehicles = 12; optional bool has_disability = 13;
-}
-
-message ResponseStopDTO {
-  optional string name = 1; optional string address = 2; optional string image = 3; optional int64 favorite_id = 4;
-  optional string type = 5; optional string subtype = 6; optional string schedule_weekday = 7;
-  optional string schedule_saturday = 8; optional string schedule_sunday = 9;
-  repeated ResponseLineDTO lines = 10; optional bool has_disability = 11;
-}
-`;
 
     const NEAREST_STOPS = 15;
     const VEHICLE_POLL_MS = 5000;
@@ -135,10 +87,6 @@ message ResponseStopDTO {
     let stopListScroll = 0;
     let stopListEl = null;
 
-    let protoRoot;
-    let HomeStopsType;
-    let LineDetailType;
-    let VehiclesType;
     let userLngLat = null;
     let vehicleMarkers = [];
     let stopPopup = null;
@@ -151,8 +99,6 @@ message ResponseStopDTO {
     let vehicleGen = 0;
     let moveTimer;
     let vehicleTimer = null;
-    let authPromise = null;
-    let tokenRefresh = null;
     let lastStops = [];
     let lastPlottedVehicles = [];
     const stopInfoCache = new Map();
@@ -170,115 +116,20 @@ message ResponseStopDTO {
       statusEl.className = "hud-status" + (kind ? " " + kind : "");
     }
 
-    function uuid() {
-      if (crypto.randomUUID) return crypto.randomUUID();
-      const b = crypto.getRandomValues(new Uint8Array(16));
-      b[6] = (b[6] & 0x0f) | 0x40;
-      b[8] = (b[8] & 0x3f) | 0x80;
-      const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
-      return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-    }
-
-    function getAppId() {
-      let id = localStorage.getItem(LS_APP);
-      if (!id) {
-        id = uuid();
-        localStorage.setItem(LS_APP, id);
-      }
-      return id;
-    }
-
-    function deviceName() {
-      const ua = navigator.userAgent;
-      if (ua.includes("Firefox")) return "Firefox";
-      if (ua.includes("Edg/")) return "Edge";
-      if (ua.includes("Chrome")) return "Chrome";
-      if (ua.includes("Safari")) return "Safari";
-      return "Web";
-    }
-
-    function deviceHeaders(extra) {
-      const h = {
-        "App-Id": getAppId(),
-        "OS-Type": "Web",
-        "App-Version": "2.6.0",
-        "Device-Name": deviceName(),
-        "OS-Version": navigator.appVersion || "5.0",
-        Lang: "ro",
-        Source: "ro.radcom.smartcity.web",
-      };
-      const token = localStorage.getItem(LS_TOKEN);
-      if (token) h["User-Info"] = token;
-      Object.assign(h, extra || {});
-      return h;
-    }
-
-    async function rawFetch(path, extraHeaders) {
-      const res = await fetch(BASE + path, { headers: deviceHeaders(extraHeaders) });
-      const buf = await res.arrayBuffer();
-      return { res, buf };
+    function clearLegacyAuth() {
+      try {
+        localStorage.removeItem("appId");
+        localStorage.removeItem("userInfo");
+      } catch (err) {}
     }
 
     function bufText(buf) {
       return new TextDecoder().decode(buf);
     }
 
-    async function requestToken() {
-      setStatus("Autentificare…");
-      const headers = deviceHeaders({ "App-key": APP_KEY });
-      delete headers["User-Info"];
-      const res = await fetch(BASE + "/proxy/user/auth", { headers });
+    async function apiFetch(path) {
+      const res = await fetch(BASE + path);
       const buf = await res.arrayBuffer();
-      const text = bufText(buf);
-      if (!res.ok) {
-        const err = new Error("auth " + res.status);
-        err.status = res.status;
-        err.body = text;
-        throw err;
-      }
-      let json;
-      try {
-        json = JSON.parse(text);
-      } catch (e) {
-        const err = new Error("auth not json");
-        err.status = res.status;
-        err.body = text;
-        throw err;
-      }
-      const token = json && json.data && json.data.userInfo;
-      if (!token) throw new Error("auth missing userInfo");
-      localStorage.setItem(LS_TOKEN, token);
-      return token;
-    }
-
-    function ensureToken() {
-      const existing = localStorage.getItem(LS_TOKEN);
-      if (existing) return Promise.resolve(existing);
-      if (authPromise) return authPromise;
-      authPromise = requestToken().catch((e) => {
-        authPromise = null;
-        throw e;
-      });
-      return authPromise;
-    }
-
-    function refreshToken() {
-      if (tokenRefresh) return tokenRefresh;
-      localStorage.removeItem(LS_TOKEN);
-      authPromise = null;
-      tokenRefresh = ensureToken().finally(() => {
-        tokenRefresh = null;
-      });
-      return tokenRefresh;
-    }
-
-    async function apiFetch(path, extraHeaders, retried) {
-      await ensureToken();
-      const { res, buf } = await rawFetch(path, extraHeaders);
-      if (res.status === 412 && !retried) {
-        await refreshToken();
-        return apiFetch(path, extraHeaders, true);
-      }
       if (!res.ok) {
         const err = new Error(path + " " + res.status);
         err.status = res.status;
@@ -305,6 +156,61 @@ message ResponseStopDTO {
     function setSourceData(id, data) {
       const src = map && map.getSource(id);
       if (src) src.setData(data || emptyFC());
+    }
+
+    function applyMapTheme() {
+      const setPaint = (id, property, value) => {
+        if (!map.getLayer(id)) return;
+        try {
+          map.setPaintProperty(id, property, value);
+        } catch (err) {}
+      };
+      const layers = (map.getStyle && map.getStyle().layers) || [];
+      layers.forEach((layer) => {
+        const sourceLayer = layer["source-layer"];
+        if (layer.type === "background") {
+          setPaint(layer.id, "background-color", MAP_THEME.land);
+          return;
+        }
+        if (layer.type === "fill") {
+          if (sourceLayer === "water") setPaint(layer.id, "fill-color", MAP_THEME.water);
+          else if (["park", "landuse_park"].includes(layer.id)) {
+            setPaint(layer.id, "fill-color", MAP_THEME.park);
+          } else if (layer.id === "landuse_residential") {
+            setPaint(layer.id, "fill-color", MAP_THEME.residential);
+          } else if (sourceLayer === "building") {
+            setPaint(layer.id, "fill-color", MAP_THEME.building);
+            setPaint(layer.id, "fill-outline-color", MAP_THEME.buildingEdge);
+          }
+          return;
+        }
+        if (layer.type === "line") {
+          if (sourceLayer === "waterway") setPaint(layer.id, "line-color", MAP_THEME.water);
+          else if (sourceLayer === "transportation") {
+            if (layer.id.includes("motorway")) {
+              setPaint(layer.id, "line-color", layer.id.includes("casing") ? MAP_THEME.motorway : MAP_THEME.road);
+            } else if (layer.id.includes("major")) {
+              setPaint(layer.id, "line-color", layer.id.includes("casing") ? MAP_THEME.majorRoad : MAP_THEME.road);
+            } else if (layer.id.includes("rail") || layer.id.includes("railway")) {
+              setPaint(layer.id, "line-color", layer.id.includes("dashline") ? MAP_THEME.halo : MAP_THEME.rail);
+            } else {
+              setPaint(layer.id, "line-color", MAP_THEME.road);
+            }
+          }
+          return;
+        }
+        if (layer.type === "symbol" && layer.layout && layer.layout["text-field"]) {
+          const isWater = sourceLayer === "water_name" || sourceLayer === "waterway";
+          setPaint(layer.id, "text-color", isWater ? MAP_THEME.labelDim : MAP_THEME.label);
+          setPaint(layer.id, "text-halo-color", MAP_THEME.halo);
+          setPaint(layer.id, "text-halo-width", isWater ? 1.2 : 1.5);
+          if (sourceLayer === "place") {
+            try {
+              map.setLayoutProperty(layer.id, "text-transform", "none");
+            } catch (err) {}
+          }
+        }
+      });
     }
 
     function boundsFromLngLats(lngLats) {
@@ -414,6 +320,24 @@ message ResponseStopDTO {
       el.style.marginTop = y ? y + "px" : "";
     }
 
+    function keepVehiclePopupInView(popup) {
+      const el = popup && popup.getElement && popup.getElement();
+      if (!el || !isCompactLayout()) return;
+      const inset = 8;
+      const hudTop = hudEl.getBoundingClientRect().top;
+      el.style.marginLeft = "";
+      el.style.marginTop = "";
+      const r = el.getBoundingClientRect();
+      let x = 0;
+      let y = 0;
+      if (r.left < inset) x = inset - r.left;
+      else if (r.right > window.innerWidth - inset) x = window.innerWidth - inset - r.right;
+      if (r.top < inset) y = inset - r.top;
+      else if (r.bottom > hudTop - inset) y = hudTop - inset - r.bottom;
+      el.style.marginLeft = x ? x + "px" : "";
+      el.style.marginTop = y ? y + "px" : "";
+    }
+
     function openStopPopup(s, lngLat) {
       closeStopPopup();
       const popup = new maplibregl.Popup({
@@ -440,15 +364,10 @@ message ResponseStopDTO {
       loadStopPopup(stopPopupHandle, s);
     }
 
-    function decodeStops(buf) {
-      const msg = HomeStopsType.decode(new Uint8Array(buf));
-      return HomeStopsType.toObject(msg, { longs: String, defaults: true });
-    }
-
     async function fetchStopInfo(stopId, opts) {
       const key = String(stopId);
       if (!(opts && opts.fresh) && stopInfoCache.has(key)) return stopInfoCache.get(key);
-      const json = await apiJson("/lines/stops/" + encodeURIComponent(key));
+      const json = await apiJson("/lines/stops/" + encodeURIComponent(key) + "?lang=ro&timetable=true");
       const info = json || {};
       stopInfoCache.set(key, info);
       return info;
@@ -560,13 +479,18 @@ message ResponseStopDTO {
     function renderStopPopup(s, detail) {
       const wrap = document.createElement("div");
       wrap.className = "stop-popup";
+      wrap.setAttribute("role", "dialog");
       const name = (detail && detail.name) || s.name || "Stație";
+      wrap.setAttribute("aria-label", "Informații stație " + name);
       const head = document.createElement("div");
       head.className = "stop-head";
       const title = document.createElement("div");
       title.className = "stop-title";
       title.textContent = name;
       head.appendChild(title);
+      const headMeta = document.createElement("div");
+      headMeta.className = "stop-head-meta";
+      head.appendChild(headMeta);
       const street = stopStreet(detail, name);
       if (street) {
         const sub = document.createElement("div");
@@ -586,6 +510,10 @@ message ResponseStopDTO {
         note.textContent = ticket;
         head.appendChild(note);
       }
+      const firstOrganization = detail && detail.organization ||
+        ((detail && detail.lines || []).find((line) => line && line.organization) || {}).organization;
+      const organization = organizationBadge(firstOrganization, "stop-organization");
+      if (organization) head.appendChild(organization);
 
       wrap.appendChild(head);
 
@@ -601,13 +529,13 @@ message ResponseStopDTO {
       const parsed = lines.map((line) => ({ line: line, arrivals: lineArrivals(line) }));
       const anyLive = parsed.some((p) => p.arrivals[0] && !p.arrivals[0].scheduled);
       const anySked = parsed.some((p) => p.arrivals[0] && p.arrivals[0].scheduled);
-      if (anySked && !anyLive) {
-        const flag = document.createElement("div");
-        flag.className = "stop-street";
-        flag.textContent = "Din orar";
-        head.appendChild(flag);
-      }
-
+      const feedStatus = document.createElement("span");
+      feedStatus.className = "stop-feed-status " + (anyLive ? "is-live" : anySked ? "is-schedule" : "is-empty");
+      feedStatus.textContent = anyLive ? "LIVE" : anySked ? "ORAR" : "FĂRĂ DATE";
+      const lineCount = document.createElement("span");
+      lineCount.className = "stop-line-count";
+      lineCount.textContent = lines.length + (lines.length === 1 ? " linie" : " linii");
+      headMeta.append(feedStatus, lineCount);
       const board = document.createElement("div");
       board.className = "stop-board";
       for (const { line, arrivals } of parsed) {
@@ -625,7 +553,7 @@ message ResponseStopDTO {
 
         const bullet = document.createElement("span");
         bullet.className = "stop-bullet";
-        const fill = cssColor(line.color);
+        const fill = routeColor(line);
         bullet.style.background = fill;
         bullet.style.color = inkOnHex(fill);
         bullet.textContent = route;
@@ -647,11 +575,13 @@ message ResponseStopDTO {
           stopMeta.appendChild(k);
         }
         if (lineIsAccessible(line)) stopMeta.appendChild(accessIconEl(false));
+        const lineOrganization = organizationBadge(line.organization, "stop-line-organization");
+        if (lineOrganization) stopMeta.appendChild(lineOrganization);
         if (stopMeta.childNodes.length) mid.appendChild(stopMeta);
         const hours = line.timetable || [];
         if (hours.length) {
           const sked = document.createElement("div");
-          sked.className = "stop-street";
+          sked.className = "stop-line-schedule";
           sked.textContent = hours
             .slice(0, 6)
             .map((h) => {
@@ -682,6 +612,21 @@ message ResponseStopDTO {
         board.appendChild(row);
       }
       wrap.appendChild(board);
+      const scheduled = parsed.filter((item) => hasTimetableData(item.line));
+      if (scheduled.length) {
+        const section = document.createElement("section");
+        section.className = "stop-timetables";
+        const title = document.createElement("div");
+        title.className = "stop-timetables-title";
+        title.textContent = "Orar";
+        section.appendChild(title);
+        for (const item of scheduled) {
+          const details = timetableDetails(item.line.timetable, "Linia " + (item.line.name || "?"));
+          details.classList.add("stop-timetable");
+          section.appendChild(details);
+        }
+        wrap.appendChild(section);
+      }
       return wrap;
     }
 
@@ -691,7 +636,8 @@ message ResponseStopDTO {
       marker._stopFetchGen = (marker._stopFetchGen || 0) + 1;
       const token = marker._stopFetchGen;
       try {
-        const detail = await fetchStopInfo(s.id, { fresh: true });
+        const baseDetail = await fetchStopInfo(s.id, { fresh: true });
+        const detail = await enrichStopTimetables(s, baseDetail);
         if (marker._stopFetchGen !== token || !marker.isPopupOpen()) return;
         if (!detail || (!(detail.lines || []).length && !detail.name)) {
           throw new Error("Nu s-au putut încărca plecările");
@@ -755,6 +701,23 @@ message ResponseStopDTO {
 
     function cssColor(c) {
       return typeof c === "string" && /^#[0-9A-Fa-f]{3,8}$/.test(c) ? c : "#888888";
+    }
+
+    function modeKey(type) {
+      const t = String(type || "").toUpperCase().replace(/[\s-]+/g, "_");
+      if (t === "CABLE_CAR" || t === "TROLLEYBUS" || t === "TROLLEY_BUS") return "TROLLEYBUS";
+      if (t === "SUBWAY_STATION" || t === "METRO") return "SUBWAY";
+      if (t === "TRAMWAY") return "TRAM";
+      return t || "OTHER";
+    }
+
+    function modeColor(type, fallback) {
+      const key = modeKey(type);
+      return MODE_COLORS[key] || cssColor(fallback || MODE_COLORS.OTHER);
+    }
+
+    function routeColor(line) {
+      return modeColor(line && (line.type || line.transport_type || line.transportType), line && line.color);
     }
 
     function haversineMeters(aLat, aLng, bLat, bLng) {
@@ -822,11 +785,14 @@ message ResponseStopDTO {
     }
 
     function kindLabel(type) {
-      const t = String(type || "").toUpperCase();
-      if (t === "CABLE_CAR") return "Troleibuz";
-      if (t === "BUS") return "Autobuz";
-      if (t === "TRAM") return "Tramvai";
-      if (t === "SUBWAY") return "Metrou";
+      const key = modeKey(type);
+      if (key === "TROLLEYBUS") return "Troleibuz";
+      if (key === "BUS") return "Autobuz";
+      if (key === "TRAM") return "Tramvai";
+      if (key === "SUBWAY") return "Metrou";
+      if (key === "TRAIN") return "Tren";
+      if (key === "FERRY") return "Feribot";
+      if (key === "WALK") return "Mers pe jos";
       return type || "";
     }
 
@@ -953,6 +919,39 @@ message ResponseStopDTO {
       return board;
     }
 
+    function renderFullTimetable(hours) {
+      const wrap = document.createElement("div");
+      wrap.className = "timetable-full";
+      for (const h of hours || []) {
+        const hour = parseClockPart(h && h.hour, 23);
+        const minutes = (h && h.minutes || [])
+          .map((value) => parseClockPart(value, 59))
+          .filter((value) => value != null)
+          .map(pad2);
+        if (hour == null && !minutes.length) continue;
+        const row = document.createElement("div");
+        row.className = "timetable-hour";
+        const hourEl = document.createElement("span");
+        hourEl.className = "timetable-hour-label";
+        hourEl.textContent = hour == null ? "--:--" : pad2(hour) + ":00";
+        const minEl = document.createElement("span");
+        minEl.className = "timetable-hour-minutes";
+        minEl.textContent = minutes.length ? minutes.join(", ") : "—";
+        row.append(hourEl, minEl);
+        wrap.appendChild(row);
+      }
+      return wrap;
+    }
+
+    function timetableDetails(hours, label) {
+      const details = document.createElement("details");
+      details.className = "timetable-details";
+      const summary = document.createElement("summary");
+      summary.textContent = label || "Vezi timetable complet";
+      details.append(summary, renderFullTimetable(hours));
+      return details;
+    }
+
     function pickLineOnStop(lines, lineId, dir) {
       const id = String(lineId);
       const exact = (lines || []).filter((l) => String(l.id) === id);
@@ -964,22 +963,81 @@ message ResponseStopDTO {
       return byDir || exact[0];
     }
 
+    function hasTimetableData(line) {
+      return !!(line && Array.isArray(line.timetable) && line.timetable.length);
+    }
+
+    function mergeLineData(primary, fallback) {
+      const merged = Object.assign({}, fallback || {}, primary || {});
+      for (const key of ["timetable", "organization", "isTimetable", "is_timetable", "arrivingTimes", "arriving_times"]) {
+        const value = primary && primary[key];
+        const fallbackValue = fallback && fallback[key];
+        if ((value == null || (Array.isArray(value) && !value.length)) && fallbackValue != null) {
+          merged[key] = fallbackValue;
+        }
+      }
+      return merged;
+    }
+
+    async function fetchStopTimetable(stop, lineId, dir) {
+      const params = new URLSearchParams({
+        stop_id: String(stop.id),
+        selected_line_id: String(lineId),
+        direction: String(dir),
+        timetable: "true",
+      });
+      const detail = await apiJson("/lines/stop?" + params.toString());
+      const line = pickLineOnStop(detail.lines || [], lineId, dir);
+      if (!line) return null;
+      const fallback = pickLineOnStop((stop && stop.lines) || [], lineId, dir);
+      return {
+        stop: Object.assign({}, stop, { name: detail.name || stop.name || "" }),
+        line: mergeLineData(line, fallback),
+      };
+    }
+
+    async function enrichStopTimetables(stop, detail) {
+      const lines = (detail && detail.lines) || [];
+      const enriched = await Promise.all(
+        lines.map(async (line) => {
+          if (!line || line.id == null || hasTimetableData(line)) return line;
+          if (line.is_timetable === false || line.isTimetable === false) return line;
+          const dir = Number(line.direction);
+          if (dir !== 0 && dir !== 1) return line;
+          try {
+            const result = await fetchStopTimetable(
+              { id: stop.id, name: detail.name || stop.name, lines: [line] },
+              line.id,
+              dir
+            );
+            return result ? result.line : line;
+          } catch (err) {
+            return line;
+          }
+        })
+      );
+      return Object.assign({}, detail, { lines: enriched });
+    }
+
     async function lineAtNearestStop(lineId, dir) {
       const stops = dirStops[dir] || [];
       const ranked = nearestStops(stops, 8);
       const pool = ranked.length ? ranked : stops.slice(0, 8);
+      const hasUsefulLine = (line) => hasTimetableData(line) || lineArrivals(line).length > 0;
       for (const s of pool) {
         const line = pickLineOnStop(s.lines || [], lineId, dir);
-        if (line && ((line.timetable || []).length || lineArrivals(line).length)) {
-          return { stop: s, line: line };
-        }
+        if (line && hasUsefulLine(line)) return { stop: s, line: line };
       }
       for (const s of pool) {
         if (s == null || s.id == null) continue;
         try {
           const info = await fetchStopInfo(s.id);
           const line = pickLineOnStop(info.lines || [], lineId, dir);
-          if (line) return { stop: Object.assign({}, s, { name: info.name || s.name }), line: line };
+          if (line && hasUsefulLine(line)) {
+            return { stop: Object.assign({}, s, { name: info.name || s.name }), line: line };
+          }
+          const timetable = await fetchStopTimetable(s, lineId, dir);
+          if (timetable && hasUsefulLine(timetable.line)) return timetable;
         } catch (err) {
           console.error("stop timetable", s.id, err);
         }
@@ -995,7 +1053,7 @@ message ResponseStopDTO {
       }
       lineBarRoute.hidden = false;
       lineBarRoute.textContent = line.name;
-      const fill = cssColor(line.color);
+      const fill = routeColor(line);
       lineBarRoute.style.background = fill;
       lineBarRoute.style.color = inkOnHex(fill);
     }
@@ -1031,14 +1089,59 @@ message ResponseStopDTO {
       setLineFoot("");
     }
 
+    const ORGANIZATION_NAMES = Object.freeze({
+      1: "STB",
+      2: "Metrorex",
+      35: "STV Voluntari",
+      36: "Ecotrans STCM",
+      37: "Regio Serv Transport",
+    });
+
+    function organizationInfo(value) {
+      if (!value || typeof value !== "object") return null;
+      const logo = value.logo || value.logoFile || value.logo_file || "";
+      const name = value.name || value.code || ORGANIZATION_NAMES[String(value.id)] || (value.id != null ? "Organizație #" + value.id : "");
+      if (!logo && !name) return null;
+      return { logo: String(logo), name: String(name || "Organizație") };
+    }
+
+    function safeImageUrl(value) {
+      if (!value) return "";
+      try {
+        const url = new URL(String(value), location.origin);
+        return url.protocol === "https:" || url.protocol === "http:" ? url.href : "";
+      } catch (err) {
+        return "";
+      }
+    }
+
+    function organizationBadge(value, className) {
+      const organization = organizationInfo(value);
+      if (!organization) return null;
+      const badge = document.createElement("span");
+      badge.className = "organization-badge" + (className ? " " + className : "");
+      const logo = safeImageUrl(organization.logo);
+      if (logo) {
+        const image = document.createElement("img");
+        image.className = "organization-logo";
+        image.src = logo;
+        image.alt = "";
+        image.loading = "lazy";
+        image.decoding = "async";
+        image.referrerPolicy = "no-referrer";
+        badge.appendChild(image);
+      }
+      const name = document.createElement("span");
+      name.className = "organization-name";
+      name.textContent = organization.name;
+      badge.appendChild(name);
+      return badge;
+    }
+
     function lineInfoBits(line, detail, packLine) {
       const bits = [];
       const kind = kindLabel((detail && detail.type) || (line && line.type));
-      const org = (detail && detail.organization) || (packLine && packLine.organization) || {};
-      const orgName = org && (org.name || org.code);
-      if (kind && orgName) bits.push(kind + " · " + orgName);
-      else if (kind) bits.push(kind);
-      else if (orgName) bits.push(orgName);
+      if (kind) bits.push(kind);
       const sms = protoStr(detail, "ticket_sms", "ticketSms") || protoStr(packLine, "ticket_sms", "ticketSms");
       const price = protoStr(detail, "price_ticket_sms", "priceTicketSms") || protoStr(packLine, "price_ticket_sms", "priceTicketSms");
       if (sms && price) bits.push("Bilet SMS la " + sms + " (" + price + " lei)");
@@ -1072,7 +1175,7 @@ message ResponseStopDTO {
       });
       const show = available.length ? available : [0, 1];
       if (show.length === 1) dirs.classList.add("is-one");
-      const fill = cssColor(line.color);
+      const fill = routeColor(line);
       const ink = inkOnHex(fill);
 
       for (const dir of show) {
@@ -1106,6 +1209,17 @@ message ResponseStopDTO {
       }
       dirsWrap.append(label, dirs);
       linePageEl.appendChild(dirsWrap);
+      const organization = organizationInfo(
+        (detailDetail && detailDetail.organization) ||
+        (lineStopPack && lineStopPack.line && lineStopPack.line.organization)
+      );
+      if (organization) {
+        const identity = document.createElement("div");
+        identity.className = "line-identity";
+        const badge = organizationBadge(organization, "line-organization");
+        if (badge) identity.appendChild(badge);
+        linePageEl.appendChild(identity);
+      }
 
       if (lineStopPack === undefined) {
         const skel = document.createElement("div");
@@ -1171,6 +1285,7 @@ message ResponseStopDTO {
           } else {
             tt.appendChild(renderTimetableBoard(rows));
           }
+          if (hours.length) tt.appendChild(timetableDetails(hours));
           linePageEl.appendChild(tt);
         }
       }
@@ -1296,8 +1411,8 @@ message ResponseStopDTO {
       const stops = dirStops[dir] || [];
       pathStopsOverride = stops.length ? stops : pathStopsOverride;
       plotStops(pathStopsOverride || [], { keepView: true });
-      drawDirRoutes(line.color, { fit: false });
-      if (lastPlottedVehicles.length) plotVehicles(lastPlottedVehicles, line.color);
+      drawDirRoutes(routeColor(line), { fit: false });
+      if (lastPlottedVehicles.length) plotVehicles(lastPlottedVehicles, routeColor(line));
       updateDirVehicleCounts();
       if (same) {
         renderLinePage();
@@ -1312,8 +1427,8 @@ message ResponseStopDTO {
       renderLinePage();
     }
 
-    async function apiJson(path, extraHeaders) {
-      const buf = await apiFetch(path, extraHeaders);
+    async function apiJson(path) {
+      const buf = await apiFetch(path);
       const text = bufText(buf);
       try {
         return JSON.parse(text);
@@ -1322,11 +1437,6 @@ message ResponseStopDTO {
         err.body = text.slice(0, 240);
         throw err;
       }
-    }
-
-    function decodeLineDetail(buf) {
-      const msg = LineDetailType.decode(new Uint8Array(buf));
-      return LineDetailType.toObject(msg, { longs: String, defaults: true });
     }
 
     function segmentPathOf(obj) {
@@ -1448,7 +1558,7 @@ message ResponseStopDTO {
     function visibleLines() {
       if (activeType === "saved") return savedBoardLines();
       if (activeType === "all") return nearbyLines;
-      return nearbyLines.filter((l) => String(l.type || "").toUpperCase() === activeType);
+      return nearbyLines.filter((l) => modeKey(l.type) === modeKey(activeType));
     }
 
     function renderChips() {
@@ -1457,6 +1567,8 @@ message ResponseStopDTO {
         const b = document.createElement("button");
         b.type = "button";
         b.className = "chip" + (f.saved ? " chip-saved" : "") + (activeType === f.key ? " on" : "");
+        const chipColor = f.saved ? "var(--live)" : f.key === "all" ? "var(--map-accent)" : modeColor(f.key);
+        b.style.setProperty("--chip-color", chipColor);
         const chipMode = modeIconEl(f.key);
         if (chipMode) b.appendChild(chipMode);
         const chipLabel = document.createElement("span");
@@ -1494,7 +1606,7 @@ message ResponseStopDTO {
 
       const bullet = document.createElement("span");
       bullet.className = "line-bullet";
-      const fill = cssColor(line.color);
+      const fill = routeColor(line);
       bullet.style.background = fill;
       bullet.style.color = inkOnHex(fill);
       bullet.textContent = route;
@@ -1702,6 +1814,7 @@ message ResponseStopDTO {
         gripEl.setAttribute("aria-label", collapsed ? "Extinde panoul" : "Restrânge panoul");
       }
       syncMapPadding();
+      window.setTimeout(syncMapPadding, 360);
     }
 
     function toggleSheet() {
@@ -1709,13 +1822,20 @@ message ResponseStopDTO {
       setSheetIndex(sheetIndex === collapsedIndex ? 0 : collapsedIndex, true);
     }
 
-    function setupSheet() {
+    function syncSheetLayout() {
       measureSnaps();
-      if (!isCompactLayout()) {
-        applySheetY(0);
+      if (isCompactLayout()) {
+        if (sheetSnaps.length) {
+          setSheetIndex(hudEl.classList.contains("is-line") ? 0 : 1, false);
+        }
         return;
       }
-      setSheetIndex(sheetSnaps.length > 1 ? 1 : 0, false);
+      applySheetY(0);
+      document.documentElement.style.setProperty("--hud-stack", "0px");
+    }
+
+    function setupSheet() {
+      syncSheetLayout();
       const onDown = (ev) => {
         if (!isCompactLayout()) return;
         dragState = {
@@ -1970,11 +2090,6 @@ message ResponseStopDTO {
       vehicleGen += 1;
     }
 
-    function decodeVehicles(buf) {
-      const msg = VehiclesType.decode(new Uint8Array(buf));
-      return VehiclesType.toObject(msg, { longs: String, defaults: true });
-    }
-
     async function fetchVehicles(lineId, direction) {
       const path =
         "/lines/v2/" +
@@ -1982,8 +2097,7 @@ message ResponseStopDTO {
         "/vehicles/" +
         direction +
         "?lang=ro";
-      const buf = await apiFetch(path);
-      return decodeVehicles(buf);
+      return apiJson(path);
     }
 
     function vehicleKey(v) {
@@ -2000,14 +2114,14 @@ message ResponseStopDTO {
     }
 
     function vehicleSvg(type) {
-      var t = String(type || "").toUpperCase();
+      var t = modeKey(type);
       if (t === "BUS") {
         return '<svg class="vehicle-icon-svg" viewBox="0 0 22 22" width="20" height="20" fill="currentColor"><rect x="3" y="4" width="16" height="13" rx="3" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="6" y="6" width="3.5" height="3" rx="0.5" fill="currentColor" opacity="0.45"/><rect x="12.5" y="6" width="3.5" height="3" rx="0.5" fill="currentColor" opacity="0.45"/><rect x="5" y="11" width="12" height="2.5" rx="1" fill="currentColor" opacity="0.35"/><circle cx="7.5" cy="18.5" r="1.5" fill="currentColor"/><circle cx="14.5" cy="18.5" r="1.5" fill="currentColor"/><line x1="6" y1="2" x2="16" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
       }
       if (t === "TRAM") {
         return '<svg class="vehicle-icon-svg" viewBox="0 0 22 22" width="20" height="20" fill="currentColor"><rect x="4" y="5" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="6" y="7" width="10" height="4" rx="1" fill="currentColor" opacity="0.35"/><rect x="6" y="12.5" width="10" height="2" rx="1" fill="currentColor" opacity="0.25"/><line x1="9" y1="5" x2="7" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="5" x2="15" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="5" y1="2" x2="17" y2="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="8" cy="19.5" r="1.5" fill="currentColor"/><circle cx="14" cy="19.5" r="1.5" fill="currentColor"/></svg>';
       }
-      if (t === "CABLE_CAR") {
+      if (t === "TROLLEYBUS") {
         return '<svg class="vehicle-icon-svg" viewBox="0 0 22 22" width="20" height="20" fill="currentColor"><rect x="4" y="6" width="14" height="11" rx="2.5" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="6" y="8" width="4" height="3" rx="0.5" fill="currentColor" opacity="0.4"/><rect x="12" y="8" width="4" height="3" rx="0.5" fill="currentColor" opacity="0.4"/><rect x="6" y="12.5" width="10" height="2" rx="1" fill="currentColor" opacity="0.25"/><line x1="11" y1="6" x2="11" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="7" y1="2" x2="15" y2="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="8" cy="19" r="1.5" fill="currentColor"/><circle cx="14" cy="19" r="1.5" fill="currentColor"/></svg>';
       }
       if (t === "SUBWAY") {
@@ -2024,14 +2138,15 @@ message ResponseStopDTO {
       "</svg>";
 
     function hasModeIcon(type) {
-      const t = String(type || "").toUpperCase();
-      return t === "BUS" || t === "TRAM" || t === "CABLE_CAR" || t === "SUBWAY";
+      const key = modeKey(type);
+      return key === "BUS" || key === "TRAM" || key === "TROLLEYBUS" || key === "SUBWAY" || key === "TRAIN" || key === "FERRY" || key === "WALK";
     }
 
     function modeIconEl(type) {
       if (!hasModeIcon(type)) return null;
       const span = document.createElement("span");
       span.className = "mode-icon";
+      span.style.color = modeColor(type);
       span.setAttribute("aria-hidden", "true");
       span.innerHTML = vehicleSvg(type);
       return span;
@@ -2106,6 +2221,102 @@ message ResponseStopDTO {
       return bearingDeg(a[0], a[1], b[0], b[1]);
     }
 
+    function mobiAge(timestamp) {
+      const time = Date.parse(String(timestamp || ""));
+      if (!Number.isFinite(time)) return { label: "indisponibil", stale: true, seconds: null };
+      const seconds = Math.max(0, Math.floor((Date.now() - time) / 1000));
+      let label = "acum";
+      if (seconds >= 60 && seconds < 3600) label = Math.floor(seconds / 60) + " min";
+      else if (seconds >= 3600) label = Math.floor(seconds / 3600) + " h";
+      return { label: label, stale: seconds > 120, seconds: seconds };
+    }
+
+    function vehicleEnrichmentHtml(vehicle) {
+      const mobi = vehicle && vehicle.mobi;
+      if (!mobi) return "";
+      const rows = [];
+      const plate = mobi.licensePlate == null ? "" : String(mobi.licensePlate);
+      const passengerCount = mobi.passengerCount;
+      const passengerAge = mobi.passengerTimestamp ? mobiAge(mobi.passengerTimestamp) : null;
+      if (plate) {
+        rows.push(
+          '<div class="vehicle-enrichment-row"><span>Placă</span><strong>' +
+            escapeHtml(plate) +
+            "</strong></div>"
+        );
+      }
+      rows.push(
+        '<div class="vehicle-enrichment-row"><span>Pasageri la bord</span><strong>' +
+          (passengerCount == null ? "—" : escapeHtml(String(passengerCount))) +
+          "</strong></div>"
+      );
+      if (passengerAge) {
+        rows.push(
+          '<div class="vehicle-enrichment-row"><span>Date pasageri</span><strong class="' +
+            (passengerAge.stale ? "is-stale" : "") +
+            '">' +
+            escapeHtml(passengerAge.label) +
+            "</strong></div>"
+        );
+      }
+      return (
+        '<div class="vehicle-enrichment">' +
+        '<div class="vehicle-enrichment-heading"><span>Detalii vehicul</span></div>' +
+        rows.join("") +
+        '<div class="vehicle-enrichment-source">Sursă: mo-bi.ro</div>' +
+        "</div>"
+      );
+    }
+
+    function vehiclePopupHtml(vehicle, label, fleet, kind, fill, ink, hasAccess) {
+      const kindName = kindLabel(kind) || "Vehicul";
+      const mobi = vehicle && vehicle.mobi;
+      const positionAge = mobi && mobi.positionTimestamp ? mobiAge(mobi.positionTimestamp) : null;
+      const positionLabel = positionAge && positionAge.stale ? "STARE VECHE" : "LIVE";
+      const positionClass = positionAge && positionAge.stale ? "is-stale" : "is-live";
+      const fleetText = fleet && fleet !== label ? " · Flotă #" + escapeHtml(fleet) : "";
+      const compactData = mobi
+        ? (mobi.licensePlate ? " · " + escapeHtml(String(mobi.licensePlate)) : "") +
+          " · " +
+          (mobi.passengerCount == null ? "pax —" : escapeHtml(String(mobi.passengerCount)) + " pax") +
+          (hasAccess ? " · accesibil" : "")
+        : "";
+      const access = hasAccess
+        ? '<span class="vehicle-popup-access"><span class="access-icon">' +
+          ACCESS_SVG +
+          "</span>Accesibil</span>"
+        : "";
+      return (
+        '<div class="vehicle-popup" role="dialog" aria-label="Informații vehicul ' +
+        escapeHtml(label) +
+        '">' +
+        '<div class="vehicle-popup-header">' +
+        '<span class="vehicle-popup-route" style="--popup-route:' +
+        fill +
+        ";--popup-route-ink:" +
+        ink +
+        '">' +
+        escapeHtml(label) +
+        "</span>" +
+        '<div class="vehicle-popup-heading"><div class="vehicle-popup-title">' +
+        escapeHtml(kindName) +
+        '</div><div class="vehicle-popup-subtitle">Linia ' +
+        escapeHtml(label) +
+        fleetText +
+        compactData +
+        "</div></div>" +
+        '<span class="vehicle-popup-status ' +
+        positionClass +
+        '">' +
+        positionLabel +
+        "</span>" +
+        "</div>" +
+        (access ? '<div class="vehicle-popup-meta">' + access + "</div>" : "") +
+        vehicleEnrichmentHtml(vehicle) +
+        "</div>"
+      );
+    }
+
     function plotVehicles(vehicles, color, opts) {
       clearVehicles();
       const routeNo = (selectedLine && selectedLine.name) || "";
@@ -2132,7 +2343,17 @@ message ResponseStopDTO {
         el.style.setProperty("--veh-delay", vehicleAnimDelay(key));
         el.tabIndex = 0;
         el.setAttribute("role", "button");
-        el.setAttribute("aria-label", "Vehicul " + label + (fleet && fleet !== label ? " flotă " + fleet : ""));
+        const vehicleMobi = v.mobi;
+        const plateAria = vehicleMobi && vehicleMobi.licensePlate ? ", placa " + vehicleMobi.licensePlate : "";
+        el.setAttribute(
+          "aria-label",
+          "Vehicul " +
+            label +
+            (fleet && fleet !== label ? " flotă " + fleet : "") +
+            (kind ? ", " + kindLabel(kind) : "") +
+            (hasAccess ? ", accesibil" : "") +
+            plateAria
+        );
         el.innerHTML =
           '<span class="vehicle-mark"><span class="vehicle-beacon"><span class="vehicle-icon' +
           (brg != null ? " has-heading" : "") +
@@ -2144,21 +2365,14 @@ message ResponseStopDTO {
           '</span></span><span class="vehicle-code">' +
           escapeHtml(label) +
           "</span></span>";
-        const popup = new maplibregl.Popup({ offset: 16, closeButton: false, maxWidth: "240px" }).setHTML(
-          '<div class="popup-name">' +
-            escapeHtml(label) +
-            (fleet && fleet !== label ? " · #" + escapeHtml(fleet) : "") +
-            "</div>" +
-            '<div class="popup-meta">' +
-            escapeHtml(kind || "") +
-            (hasAccess
-              ? (kind ? " · " : "") +
-                '<span class="access-icon has-label popup-access">' +
-                ACCESS_SVG +
-                '<span class="access-label">Accesibil</span></span>'
-              : "") +
-            "</div>"
-        );
+        const popup = new maplibregl.Popup({
+          offset: 18,
+          closeButton: true,
+          closeOnMove: false,
+          focusAfterOpen: false,
+          maxWidth: "300px",
+          className: "vehicle-popup-wrap",
+        }).setHTML(vehiclePopupHtml(v, label, fleet, kind, fill, ink, hasAccess));
         const m = new maplibregl.Marker({ element: el, anchor: "left", offset: [0, 0] })
           .setLngLat([ll[1], ll[0]])
           .setPopup(popup)
@@ -2174,6 +2388,7 @@ message ResponseStopDTO {
           showPathForVehicle(v);
         });
         vehicleMarkers.push(m);
+        requestAnimationFrame(() => keepVehiclePopupInView(popup));
         if (openKey && key === openKey) m.togglePopup();
       });
     }
@@ -2234,7 +2449,7 @@ message ResponseStopDTO {
       const line = selectedLine;
       if (!line) return;
       selectedVehicleKey = vehicleKey(v);
-      plotVehicles(lastPlottedVehicles, line.color, { openKey: selectedVehicleKey });
+      plotVehicles(lastPlottedVehicles, routeColor(line), { openKey: selectedVehicleKey });
     }
 
     async function refreshVehicles(line) {
@@ -2261,7 +2476,7 @@ message ResponseStopDTO {
           }
         });
         lastPlottedVehicles = list;
-        plotVehicles(list, line.color);
+        plotVehicles(list, routeColor(line));
         updateDirVehicleCounts();
       } catch (e) {
         if (gen !== vehicleGen) return;
@@ -2347,8 +2562,7 @@ message ResponseStopDTO {
 
     async function fetchLineDetail(lineId, suffix) {
       const path = "/lines/" + encodeURIComponent(String(lineId)) + (suffix || "") + "?lang=ro";
-      const buf = await apiFetch(path);
-      return decodeLineDetail(buf);
+      return apiJson(path);
     }
 
     async function selectLine(line) {
@@ -2402,7 +2616,7 @@ message ResponseStopDTO {
           : await lineStopsFromDetail(line.id, detail);
         if (String(selectedLineId) !== String(line.id)) return;
         pathStopsOverride = stops;
-        const ok = drawDirRoutes(line.color || (detail && detail.color), { fit: false });
+        const ok = drawDirRoutes(routeColor(line), { fit: false });
         map.easeTo({
           zoom: Math.max(MAP_ZOOM.minimum, startZoom - MAP_ZOOM.routeOverviewReduction),
           duration: prefersReducedMotion() ? 0 : 400,
@@ -2433,9 +2647,8 @@ message ResponseStopDTO {
       const path = "/lines/v2/home/stops/" + parseBoundsPath(map.getBounds());
       if (!selectedLineId)       setStatus("Se încarcă stațiile…");
       try {
-        const buf = await apiFetch(path);
+        const obj = await apiJson(path);
         if (gen !== fetchGen) return;
-        const obj = decodeStops(buf);
         lastStops = obj.stops || [];
         if (pathStopsOverride) {
           plotStops(pathStopsOverride, { keepView: true });
@@ -2539,9 +2752,9 @@ message ResponseStopDTO {
       if ("open" in el) el.open = false;
     }
 
-    // One rail, three actions, one 44px target each. The zoom buttons know
+    // One rail, four actions, one 44px target each. The zoom buttons know
     // their own limits so they switch off at the ends of the range instead of
-    // silently doing nothing; locate keeps the amber fill and reports a busy
+    // silently doing nothing; locate keeps the blue fill and reports a busy
     // state while the browser is locating.
     function railButton(className, label, onClick) {
       const btn = document.createElement("button");
@@ -2577,6 +2790,12 @@ message ResponseStopDTO {
       const locateBtn = railButton("map-locate", "Locația mea", () => {
         recenterOnUser();
       });
+      const northBtn = railButton("map-north", "Resetează nordul", () => {
+        mapInstance.easeTo({ bearing: 0, pitch: 0, duration: zoomDuration() });
+      });
+      const divider = document.createElement("span");
+      divider.className = "map-rail-divider";
+      divider.setAttribute("aria-hidden", "true");
 
       const syncZoomState = () => {
         const zoom = mapInstance.getZoom();
@@ -2588,9 +2807,11 @@ message ResponseStopDTO {
       mapInstance.on("zoom", syncZoomState);
       mapInstance.on("zoomend", syncZoomState);
 
+      wrap.appendChild(locateBtn);
+      wrap.appendChild(northBtn);
+      wrap.appendChild(divider);
       wrap.appendChild(zoomIn);
       wrap.appendChild(zoomOut);
-      wrap.appendChild(locateBtn);
       this._container = wrap;
       syncZoomState();
       return wrap;
@@ -2617,8 +2838,8 @@ message ResponseStopDTO {
         source: "route",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#ffffff",
-          "line-width": ["case", ["==", ["get", "active"], 1], 8, 5],
+          "line-color": MAP_THEME.routeCasing,
+          "line-width": ["case", ["==", ["get", "active"], 1], 7, 4],
           "line-opacity": ["case", ["==", ["get", "active"], 1], 0.92, 0.35],
         },
       });
@@ -2628,8 +2849,8 @@ message ResponseStopDTO {
         source: "route",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#3a3f4c",
-          "line-width": ["case", ["==", ["get", "active"], 1], 4.5, 3],
+          "line-color": MAP_THEME.routeFallback,
+          "line-width": ["case", ["==", ["get", "active"], 1], 4, 2.5],
           "line-opacity": ["case", ["==", ["get", "active"], 1], 0.94, 0.28],
         },
       });
@@ -2640,9 +2861,9 @@ message ResponseStopDTO {
         filter: ["==", ["get", "active"], 1],
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#ffffff",
-          "line-width": 3,
-          "line-opacity": 0.85,
+          "line-color": MAP_THEME.routeCasing,
+          "line-width": 2.5,
+          "line-opacity": 0.7,
           "line-dasharray": [0, 4, 3],
         },
       });
@@ -2654,8 +2875,28 @@ message ResponseStopDTO {
         source: "stops",
         paint: {
           "circle-radius": 18,
-          "circle-color": "#000000",
+          "circle-color": MAP_THEME.land,
           "circle-opacity": 0,
+        },
+      });
+      map.addLayer({
+        id: "stops-label",
+        type: "symbol",
+        source: "stops",
+        minzoom: 15.2,
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": ["Noto Sans Regular"],
+          "text-size": 11,
+          "text-anchor": "top",
+          "text-offset": [0, 1.15],
+          "text-allow-overlap": false,
+          "text-optional": true,
+        },
+        paint: {
+          "text-color": MAP_THEME.label,
+          "text-halo-color": MAP_THEME.halo,
+          "text-halo-width": 1.5,
         },
       });
       map.addLayer({
@@ -2663,11 +2904,12 @@ message ResponseStopDTO {
         type: "circle",
         source: "stops",
         paint: {
-          "circle-radius": 5.5,
-          "circle-color": "#3a3f4c",
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
-          "circle-opacity": 0.95,
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 3.25, 17, 5.5],
+          "circle-color": MAP_THEME.stop,
+          "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 0.8, 14, 1.2, 17, 2],
+          "circle-stroke-color": MAP_THEME.routeCasing,
+          "circle-opacity": ["interpolate", ["linear"], ["zoom"], 10, 0.42, 14, 0.68, 17, 0.95],
+          "circle-stroke-opacity": ["interpolate", ["linear"], ["zoom"], 10, 0.32, 14, 0.55, 17, 0.95],
         },
       });
       map.addSource("user", { type: "geojson", data: emptyFC() });
@@ -2676,14 +2918,14 @@ message ResponseStopDTO {
         type: "fill",
         source: "user",
         filter: ["==", ["get", "kind"], "accuracy"],
-        paint: { "fill-color": "#eea52b", "fill-opacity": 0.14 },
+        paint: { "fill-color": MAP_THEME.user, "fill-opacity": 0.12 },
       });
       map.addLayer({
         id: "user-accuracy-line",
         type: "line",
         source: "user",
         filter: ["==", ["get", "kind"], "accuracy"],
-        paint: { "line-color": "#eea52b", "line-width": 1.5 },
+        paint: { "line-color": MAP_THEME.user, "line-width": 1.5, "line-opacity": 0.72 },
       });
       map.addLayer({
         id: "user-dot",
@@ -2692,9 +2934,9 @@ message ResponseStopDTO {
         filter: ["==", ["get", "kind"], "you"],
         paint: {
           "circle-radius": 7,
-          "circle-color": "#ffffff",
+          "circle-color": MAP_THEME.routeCasing,
           "circle-stroke-width": 3,
-          "circle-stroke-color": "#eea52b",
+          "circle-stroke-color": MAP_THEME.user,
         },
       });
       map.on("mouseenter", "stops-hit", () => {
@@ -2735,18 +2977,14 @@ message ResponseStopDTO {
     }
 
     async function boot() {
-      protoRoot = protobuf.parse(PROTO).root;
-      HomeStopsType = protoRoot.lookupType("ro.radcom.rp.protofiles.generate.ResponseGetHomeStopsDTO");
-      LineDetailType = protoRoot.lookupType("ro.radcom.rp.protofiles.generate.ResponseGetLineDTO");
-      VehiclesType = protoRoot.lookupType("ro.radcom.rp.protofiles.generate.ResponseGetVehiclesDTO");
-
-      //renderChips();
+      clearLegacyAuth();
+      renderChips();
       startClock();
       setupSheet();
 
       map = new maplibregl.Map({
         container: "map",
-        style: "https://tiles.openfreemap.org/styles/positron",
+        style: "https://tiles.openfreemap.org/styles/dark",
         center: [CITY.lng, CITY.lat],
         zoom: MAP_ZOOM.initial,
         minZoom: MAP_ZOOM.minimum,
@@ -2755,27 +2993,39 @@ message ResponseStopDTO {
         attributionControl: false,
       });
       window.__map = map;
+      map.on("styleimagemissing", (event) => {
+        if (event.id !== "wood-pattern" || map.hasImage(event.id)) return;
+        map.addImage(event.id, {
+          width: 2,
+          height: 2,
+          data: new Uint8Array([18, 56, 47, 255, 18, 56, 47, 255, 18, 56, 47, 255, 18, 56, 47, 255]),
+        });
+      });
       map.dragRotate.disable();
       if (map.touchPitch) map.touchPitch.disable();
       if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
       map.addControl(new MapRailControl(), "top-right");
       map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
       await whenMapReady();
+      applyMapTheme();
       collapseAttribution();
       map.once("idle", collapseAttribution);
       ensureOverlayLayers();
       map.resize();
       syncMapPadding();
       if (window.ResizeObserver) {
-        new ResizeObserver(() => syncMapPadding()).observe(hudEl);
+        new ResizeObserver(() => {
+          syncSheetLayout();
+          syncMapPadding();
+        }).observe(hudEl);
       }
       window.addEventListener("resize", () => {
+        syncSheetLayout();
         map.resize();
         syncMapPadding();
       });
 
-      await ensureToken();
-      setStatus("Se solicită locația…");
+       setStatus("Se solicită locația…");
       const loc = await locate();
       setUserLoc(loc.lat, loc.lng, loc.acc);
       map.jumpTo({
