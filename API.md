@@ -201,10 +201,20 @@ field names use the JavaScript camel-case form (`arrivingTime`, `segmentPath`).
 The server may add a `mobi` object to vehicles returned by
 `/lines/v2/{line_id}/vehicles/{direction}`. It comes from the public
 `https://mo-bi.ro/python_api` feed and is cached server-side. The object can
-contain `licensePlate`, `passengerCount`, `passengerTimestamp`,
-`positionTimestamp`, `sourceTimestamp`, `sourceId`, `routeId`, `direction`, and
-`tripStartTime`. Passenger fields can be null or stale; no capacity or
-occupancy percentage is inferred.
+contain:
+
+- `source`: `mo-bi.ro`
+- `licensePlate`, `passengerCount`, `boarded`, `alighted`
+- `passengerTimestamp`, `passengerAgeSeconds`
+- `positionTimestamp`, `positionAgeSeconds`
+- `sourceTimestamp`, `sourceId`
+- `routeId`, `direction`, `tripStartTime`
+- `matchedBy`: the identity match method (`id`, `code`, `hardware`, or a combined match)
+
+Passenger and position fields can be null or stale; no capacity or occupancy
+percentage is inferred. The vehicle popup keeps the rider-facing fields visible
+by default and exposes the complete response, including null values, under
+`Toate datele API`.
 
 Arrival semantics (`TimesDTO`): `arrivingTime` = seconds until arrival, `-1`/absent = unknown, `timetable=true` = value from schedule rather than live AVL; `has_disability` = accessible vehicle. The app requests stop timetable data with `timetable=true` and merges the returned schedule with the stop organization metadata.
 

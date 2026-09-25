@@ -19,6 +19,29 @@
       stop: "#5aa9ff",
       user: "#54a9ff",
     });
+    const LIGHT_MAP_THEME = Object.freeze({
+      land: "#f3f5f6",
+      label: "#243746",
+      halo: "#ffffff",
+      routeFallback: "#1769aa",
+      routeCasing: "#ffffff",
+      stop: "#1769aa",
+      user: "#0a78c2",
+    });
+    const MAP_STYLES = Object.freeze({
+      dark: Object.freeze({
+        label: "Întunecat",
+        url: "https://tiles.openfreemap.org/styles/dark",
+        overlay: MAP_THEME,
+        customizeBase: true,
+      }),
+      light: Object.freeze({
+        label: "Clar",
+        url: "https://tiles.openfreemap.org/styles/positron",
+        overlay: LIGHT_MAP_THEME,
+        customizeBase: false,
+      }),
+    });
 
     const MODE_COLORS = Object.freeze({
       BUS: "#4b9bff",
@@ -47,6 +70,7 @@
     const NEAREST_STOPS = 15;
     const VEHICLE_POLL_MS = 5000;
     const LS_FAV = "favLines";
+    const LS_MAP_STYLE = "mapStyle";
     const hudEl = document.getElementById("hud");
     const nearbyView = document.getElementById("nearbyView");
     const lineView = document.getElementById("lineView");
@@ -63,6 +87,8 @@
     const searchClear = document.getElementById("searchClear");
     const clockEl = document.getElementById("clock");
     const clockDateEl = document.getElementById("clockDate");
+    const hudFeedEl = document.getElementById("hudFeed");
+    const hudFeedLabelEl = document.getElementById("hudFeedLabel");
 
     const FILTERS = [
       { key: "all", label: "Toate" },
@@ -89,10 +115,16 @@
 
     let userLngLat = null;
     let vehicleMarkers = [];
+    let vehicleMarkerMap = new Map();
     let stopPopup = null;
     let stopPopupHandle = null;
     let map;
+    let mapStyleId = "dark";
+    let mapStyleControl = null;
+    let mapStyleLoading = false;
+    let overlayHandlersReady = false;
     let overlaysReady = false;
+    const mapSourceData = new Map();
     let fittedOnce = false;
     let fetchGen = 0;
     let nearbyGen = 0;
@@ -102,6 +134,7 @@
     let lastStops = [];
     let lastPlottedVehicles = [];
     const stopInfoCache = new Map();
+    const stopTimetableCache = new Map();
     const lineDirCache = new Map();
     let nearbyLines = [];
     let selectedLineId = null;
@@ -111,9 +144,17 @@
     let drawingLine = false;
     let dirPaths = { 0: [], 1: [] };
 
+    function setFeedState(kind) {
+      const state = kind === "ok" ? "live" : kind === "warn" ? "warn" : kind === "err" ? "error" : "sync";
+      const label = state === "live" ? "LIVE" : state === "warn" ? "ATENȚIE" : state === "error" ? "EROARE" : "SYNC";
+      hudFeedEl.className = "hud-feed is-" + state;
+      hudFeedLabelEl.textContent = label;
+    }
+
     function setStatus(msg, kind) {
       statusEl.textContent = msg;
       statusEl.className = "hud-status" + (kind ? " " + kind : "");
+      setFeedState(kind);
     }
 
     function clearLegacyAuth() {
@@ -154,11 +195,13 @@
     }
 
     function setSourceData(id, data) {
+      const nextData = data || emptyFC();
+      mapSourceData.set(id, nextData);
       const src = map && map.getSource(id);
-      if (src) src.setData(data || emptyFC());
+      if (src) src.setData(nextData);
     }
 
-    function applyMapTheme() {
+    function applyMapTheme(theme = MAP_THEME) {
       const setPaint = (id, property, value) => {
         if (!map.getLayer(id)) return;
         try {
@@ -169,40 +212,40 @@
       layers.forEach((layer) => {
         const sourceLayer = layer["source-layer"];
         if (layer.type === "background") {
-          setPaint(layer.id, "background-color", MAP_THEME.land);
+          setPaint(layer.id, "background-color", theme.land);
           return;
         }
         if (layer.type === "fill") {
-          if (sourceLayer === "water") setPaint(layer.id, "fill-color", MAP_THEME.water);
+          if (sourceLayer === "water") setPaint(layer.id, "fill-color", theme.water);
           else if (["park", "landuse_park"].includes(layer.id)) {
-            setPaint(layer.id, "fill-color", MAP_THEME.park);
+            setPaint(layer.id, "fill-color", theme.park);
           } else if (layer.id === "landuse_residential") {
-            setPaint(layer.id, "fill-color", MAP_THEME.residential);
+            setPaint(layer.id, "fill-color", theme.residential);
           } else if (sourceLayer === "building") {
-            setPaint(layer.id, "fill-color", MAP_THEME.building);
-            setPaint(layer.id, "fill-outline-color", MAP_THEME.buildingEdge);
+            setPaint(layer.id, "fill-color", theme.building);
+            setPaint(layer.id, "fill-outline-color", theme.buildingEdge);
           }
           return;
         }
         if (layer.type === "line") {
-          if (sourceLayer === "waterway") setPaint(layer.id, "line-color", MAP_THEME.water);
+          if (sourceLayer === "waterway") setPaint(layer.id, "line-color", theme.water);
           else if (sourceLayer === "transportation") {
             if (layer.id.includes("motorway")) {
-              setPaint(layer.id, "line-color", layer.id.includes("casing") ? MAP_THEME.motorway : MAP_THEME.road);
+              setPaint(layer.id, "line-color", layer.id.includes("casing") ? theme.motorway : theme.road);
             } else if (layer.id.includes("major")) {
-              setPaint(layer.id, "line-color", layer.id.includes("casing") ? MAP_THEME.majorRoad : MAP_THEME.road);
+              setPaint(layer.id, "line-color", layer.id.includes("casing") ? theme.majorRoad : theme.road);
             } else if (layer.id.includes("rail") || layer.id.includes("railway")) {
-              setPaint(layer.id, "line-color", layer.id.includes("dashline") ? MAP_THEME.halo : MAP_THEME.rail);
+              setPaint(layer.id, "line-color", layer.id.includes("dashline") ? theme.halo : theme.rail);
             } else {
-              setPaint(layer.id, "line-color", MAP_THEME.road);
+              setPaint(layer.id, "line-color", theme.road);
             }
           }
           return;
         }
         if (layer.type === "symbol" && layer.layout && layer.layout["text-field"]) {
           const isWater = sourceLayer === "water_name" || sourceLayer === "waterway";
-          setPaint(layer.id, "text-color", isWater ? MAP_THEME.labelDim : MAP_THEME.label);
-          setPaint(layer.id, "text-halo-color", MAP_THEME.halo);
+          setPaint(layer.id, "text-color", isWater ? theme.labelDim : theme.label);
+          setPaint(layer.id, "text-halo-color", theme.halo);
           setPaint(layer.id, "text-halo-width", isWater ? 1.2 : 1.5);
           if (sourceLayer === "place") {
             try {
@@ -366,10 +409,13 @@
 
     async function fetchStopInfo(stopId, opts) {
       const key = String(stopId);
-      if (!(opts && opts.fresh) && stopInfoCache.has(key)) return stopInfoCache.get(key);
-      const json = await apiJson("/lines/stops/" + encodeURIComponent(key) + "?lang=ro&timetable=true");
+      const wantsTimetable = !!(opts && opts.timetable);
+      const cache = wantsTimetable ? stopTimetableCache : stopInfoCache;
+      if (!(opts && opts.fresh) && cache.has(key)) return cache.get(key);
+      const query = "?lang=ro" + (wantsTimetable ? "&timetable=true" : "");
+      const json = await apiJson("/lines/stops/" + encodeURIComponent(key) + query);
       const info = json || {};
-      stopInfoCache.set(key, info);
+      cache.set(key, info);
       return info;
     }
 
@@ -612,7 +658,17 @@
         board.appendChild(row);
       }
       wrap.appendChild(board);
-      const scheduled = parsed.filter((item) => hasTimetableData(item.line));
+      const scheduled = parsed.filter((item) => {
+        const line = item.line;
+        const dir = Number(line && line.direction);
+        return (
+          line &&
+          line.id != null &&
+          line.is_timetable !== false &&
+          line.isTimetable !== false &&
+          (hasTimetableData(line) || dir === 0 || dir === 1)
+        );
+      });
       if (scheduled.length) {
         const section = document.createElement("section");
         section.className = "stop-timetables";
@@ -621,7 +677,23 @@
         title.textContent = "Orar";
         section.appendChild(title);
         for (const item of scheduled) {
-          const details = timetableDetails(item.line.timetable, "Linia " + (item.line.name || "?"));
+          const line = item.line;
+          const dir = Number(line.direction);
+          const load = hasTimetableData(line) || (dir !== 0 && dir !== 1)
+            ? null
+            : async (content) => {
+                const result = await fetchStopTimetable(
+                  { id: s.id, name: detail.name || s.name, lines: [line] },
+                  line.id,
+                  dir
+                );
+                const hours = result && result.line && result.line.timetable;
+                if (!hours || !hours.length) throw new Error("timetable unavailable");
+                line.timetable = hours;
+                content.className = "timetable-content";
+                content.replaceChildren(renderFullTimetable(hours));
+              };
+          const details = timetableDetails(line.timetable, "Linia " + (line.name || "?"), load);
           details.classList.add("stop-timetable");
           section.appendChild(details);
         }
@@ -636,8 +708,7 @@
       marker._stopFetchGen = (marker._stopFetchGen || 0) + 1;
       const token = marker._stopFetchGen;
       try {
-        const baseDetail = await fetchStopInfo(s.id, { fresh: true });
-        const detail = await enrichStopTimetables(s, baseDetail);
+        const detail = await fetchStopInfo(s.id, { fresh: true });
         if (marker._stopFetchGen !== token || !marker.isPopupOpen()) return;
         if (!detail || (!(detail.lines || []).length && !detail.name)) {
           throw new Error("Nu s-au putut încărca plecările");
@@ -943,12 +1014,39 @@
       return wrap;
     }
 
-    function timetableDetails(hours, label) {
+    function timetableDetails(hours, label, load) {
       const details = document.createElement("details");
       details.className = "timetable-details";
       const summary = document.createElement("summary");
-      summary.textContent = label || "Vezi timetable complet";
-      details.append(summary, renderFullTimetable(hours));
+      summary.textContent = label || "Vezi orarul complet";
+      const content = document.createElement("div");
+      content.className = "timetable-content";
+      if (hours && hours.length) {
+        content.appendChild(renderFullTimetable(hours));
+      } else if (!load) {
+        content.className = "timetable-content is-empty";
+        content.textContent = "Orar indisponibil";
+      }
+      details.append(summary, content);
+      if (load) {
+        let loading = false;
+        details.addEventListener("toggle", async () => {
+          if (!details.open || loading || content.dataset.loaded) return;
+          loading = true;
+          content.dataset.loaded = "loading";
+          content.className = "timetable-content is-loading";
+          content.textContent = "Se încarcă orarul…";
+          try {
+            await load(content);
+            content.dataset.loaded = "1";
+          } catch (err) {
+            content.className = "timetable-content is-error";
+            content.textContent = "Orar indisponibil";
+          } finally {
+            loading = false;
+          }
+        });
+      }
       return details;
     }
 
@@ -994,29 +1092,6 @@
         stop: Object.assign({}, stop, { name: detail.name || stop.name || "" }),
         line: mergeLineData(line, fallback),
       };
-    }
-
-    async function enrichStopTimetables(stop, detail) {
-      const lines = (detail && detail.lines) || [];
-      const enriched = await Promise.all(
-        lines.map(async (line) => {
-          if (!line || line.id == null || hasTimetableData(line)) return line;
-          if (line.is_timetable === false || line.isTimetable === false) return line;
-          const dir = Number(line.direction);
-          if (dir !== 0 && dir !== 1) return line;
-          try {
-            const result = await fetchStopTimetable(
-              { id: stop.id, name: detail.name || stop.name, lines: [line] },
-              line.id,
-              dir
-            );
-            return result ? result.line : line;
-          } catch (err) {
-            return line;
-          }
-        })
-      );
-      return Object.assign({}, detail, { lines: enriched });
     }
 
     async function lineAtNearestStop(lineId, dir) {
@@ -1806,6 +1881,7 @@
     function setSheetIndex(i, animate) {
       if (!isCompactLayout() || !sheetSnaps.length) return;
       sheetIndex = Math.max(0, Math.min(sheetSnaps.length - 1, i));
+      document.body.classList.toggle("has-full-sheet", sheetIndex === 0);
       hudEl.classList.remove("dragging");
       applySheetY(sheetSnaps[sheetIndex]);
       const collapsed = sheetIndex === sheetSnaps.length - 1;
@@ -1831,6 +1907,7 @@
         return;
       }
       applySheetY(0);
+      document.body.classList.remove("has-full-sheet");
       document.documentElement.style.setProperty("--hud-stack", "0px");
     }
 
@@ -1934,7 +2011,7 @@
 
     function lineIdFromHash(hash) {
       const raw = String(hash == null ? location.hash : hash).replace(/^#/, "");
-      const m = raw.match(/^!\/(?:line\/)?([^/?#]+)\/?$/i);
+      const m = raw.match(/^(?:!\/(?:line\/)?)?([^/?#]+)\/?$/i);
       if (!m) return null;
       try {
         const id = decodeURIComponent(m[1]).trim();
@@ -1946,7 +2023,7 @@
     }
 
     function setLineHash(id) {
-      const next = "#!/" + encodeURIComponent(String(id));
+      const next = "#" + encodeURIComponent(String(id));
       if (location.hash === next) return;
       history.replaceState(null, "", location.pathname + location.search + next);
     }
@@ -2022,6 +2099,20 @@
       return selectLine(known || { id: id });
     }
 
+    async function mapConcurrent(items, limit, worker) {
+      const results = new Array(items.length);
+      let next = 0;
+      const run = async () => {
+        while (next < items.length) {
+          const index = next++;
+          results[index] = await worker(items[index], index);
+        }
+      };
+      const workers = Array.from({ length: Math.min(limit, items.length) }, run);
+      await Promise.all(workers);
+      return results;
+    }
+
     async function loadNearbyLines(stops) {
       const gen = ++nearbyGen;
       const ranked = nearestStops(stops, NEAREST_STOPS);
@@ -2033,17 +2124,23 @@
       }
       setLinesCount("Se încarcă linii de la " + countLabel(ranked.length, "stație", "stații") + "…");
       const byId = new Map();
+      const publish = () => {
+        const list = [...byId.values()].sort((a, b) => {
+          const da = arrivalSortKey(a);
+          const db = arrivalSortKey(b);
+          if (da !== db) return da - db;
+          return String(a.name || "").localeCompare(String(b.name || ""), "ro", { numeric: true });
+        });
+        setLinesCount(list.length + (list.length === 1 ? " linie" : " linii"));
+        renderLinesList(list);
+      };
       try {
-        const batches = await Promise.all(
-          ranked.map((stop) =>
-            fetchStopLines(stop.id).catch((err) => {
-              console.error("stop lines", stop.id, err);
-              return [];
-            })
-          )
-        );
-        if (gen !== nearbyGen) return;
-        for (const lines of batches) {
+        await mapConcurrent(ranked, 6, async (stop) => {
+          const lines = await fetchStopLines(stop.id).catch((err) => {
+            console.error("stop lines", stop.id, err);
+            return [];
+          });
+          if (gen !== nearbyGen) return;
           for (const line of lines) {
             if (line == null || line.id == null) continue;
             const id = String(line.id);
@@ -2061,14 +2158,10 @@
               access: lineIsAccessible(line),
             });
           }
-        }
-        const list = [...byId.values()].sort((a, b) => {
-          const da = arrivalSortKey(a);
-          const db = arrivalSortKey(b);
-          if (da !== db) return da - db;
-          return String(a.name || "").localeCompare(String(b.name || ""), "ro", { numeric: true });
+          if (byId.size) publish();
         });
-        renderLinesList(list);
+        if (gen !== nearbyGen) return;
+        publish();
       } catch (e) {
         if (gen !== nearbyGen) return;
         console.error(e);
@@ -2078,7 +2171,8 @@
     }
 
     function clearVehicles() {
-      vehicleMarkers.forEach((m) => m.remove());
+      vehicleMarkerMap.forEach((m) => m.remove());
+      vehicleMarkerMap.clear();
       vehicleMarkers = [];
     }
 
@@ -2221,73 +2315,196 @@
       return bearingDeg(a[0], a[1], b[0], b[1]);
     }
 
-    function mobiAge(timestamp) {
-      const time = Date.parse(String(timestamp || ""));
-      if (!Number.isFinite(time)) return { label: "indisponibil", stale: true, seconds: null };
-      const seconds = Math.max(0, Math.floor((Date.now() - time) / 1000));
+    function mobiAge(timestamp, ageSeconds) {
+      let seconds = ageSeconds == null || ageSeconds === "" ? null : Number(ageSeconds);
+      if (seconds != null && Number.isFinite(seconds)) {
+        seconds = Math.max(0, Math.floor(seconds));
+      } else {
+        seconds = null;
+        const time = Date.parse(String(timestamp || ""));
+        if (Number.isFinite(time)) seconds = Math.max(0, Math.floor((Date.now() - time) / 1000));
+      }
+      if (seconds == null) return { label: "indisponibil", stale: true, seconds: null };
       let label = "acum";
       if (seconds >= 60 && seconds < 3600) label = Math.floor(seconds / 60) + " min";
       else if (seconds >= 3600) label = Math.floor(seconds / 3600) + " h";
       return { label: label, stale: seconds > 120, seconds: seconds };
     }
 
-    function vehicleEnrichmentHtml(vehicle) {
-      const mobi = vehicle && vehicle.mobi;
-      if (!mobi) return "";
-      const rows = [];
-      const plate = mobi.licensePlate == null ? "" : String(mobi.licensePlate);
-      const passengerCount = mobi.passengerCount;
-      const passengerAge = mobi.passengerTimestamp ? mobiAge(mobi.passengerTimestamp) : null;
-      if (plate) {
-        rows.push(
-          '<div class="vehicle-enrichment-row"><span>Placă</span><strong>' +
-            escapeHtml(plate) +
-            "</strong></div>"
-        );
-      }
-      rows.push(
-        '<div class="vehicle-enrichment-row"><span>Pasageri la bord</span><strong>' +
-          (passengerCount == null ? "—" : escapeHtml(String(passengerCount))) +
-          "</strong></div>"
+    function vehicleApiField(vehicle, snake, camel) {
+      if (!vehicle) return null;
+      const snakeValue = vehicle[snake];
+      return snakeValue != null && snakeValue !== "" ? snakeValue : vehicle[camel];
+    }
+
+    function vehicleDisplayValue(value) {
+      if (value == null || value === "") return "—";
+      if (typeof value === "boolean") return value ? "Da" : "Nu";
+      return escapeHtml(String(value));
+    }
+
+    function vehicleDisplayNumber(value) {
+      if (value == null || value === "") return "—";
+      const number = Number(value);
+      return Number.isFinite(number) ? escapeHtml(String(number)) : vehicleDisplayValue(value);
+    }
+
+    function vehicleDisplayCoordinate(value) {
+      if (value == null || value === "") return "—";
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(6) : vehicleDisplayValue(value);
+    }
+
+    function vehicleDisplayTimestamp(value) {
+      if (value == null || value === "") return "—";
+      const raw = String(value);
+      const time = Date.parse(raw);
+      if (!Number.isFinite(time)) return escapeHtml(raw);
+      const date = new Date(time);
+      return (
+        '<time datetime="' +
+        escapeHtml(date.toISOString()) +
+        '" title="' +
+        escapeHtml(raw) +
+        '">' +
+        escapeHtml(date.toLocaleString("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })) +
+        "</time>"
       );
-      if (passengerAge) {
+    }
+
+    function vehicleDisplayAge(age) {
+      return age && age.seconds != null ? escapeHtml(String(age.seconds)) + " s" : "—";
+    }
+
+    function vehicleApiRow(label, value, className, valueClass) {
+      return (
+        '<div class="vehicle-api-row ' +
+        (className || "") +
+        '"><span>' +
+        escapeHtml(label) +
+        '</span><strong class="' +
+        (valueClass || "") +
+        '">' +
+        (value || "—") +
+        "</strong></div>"
+      );
+    }
+
+    function vehicleRequestDirection(vehicle) {
+      const raw = vehicle && vehicle.direction;
+      if (raw == null || raw === "") return null;
+      const direction = Number(raw);
+      return Number.isFinite(direction) ? direction : null;
+    }
+
+    function vehicleDestination(vehicle) {
+      const direction = vehicleRequestDirection(vehicle);
+      return direction == null ? "" : directionLabel(direction);
+    }
+
+    function vehicleAccessValue(vehicle, fallback) {
+      const value = vehicleApiField(vehicle, "has_disability", "hasDisability");
+      return value == null ? (fallback == null ? null : !!fallback) : !!value;
+    }
+
+    function vehicleEnrichmentHtml(vehicle, hasAccess) {
+      const mobi = vehicle && vehicle.mobi;
+      if (!mobi && hasAccess == null) return "";
+      const rows = [];
+      const plate = mobi && mobi.licensePlate != null ? String(mobi.licensePlate) : "";
+      if (mobi) {
+        rows.push(vehicleApiRow("Placă", vehicleDisplayValue(plate), "vehicle-enrichment-plate"));
+        rows.push(vehicleApiRow("Pasageri la bord", vehicleDisplayNumber(mobi.passengerCount), "vehicle-enrichment-passengers"));
+        rows.push(vehicleApiRow("În urcări", vehicleDisplayNumber(mobi.boarded), "vehicle-enrichment-boarded"));
+        rows.push(vehicleApiRow("Coborâri", vehicleDisplayNumber(mobi.alighted), "vehicle-enrichment-alighted"));
+      } else {
+        rows.push('<div class="vehicle-data-empty">Datele live mo-bi nu sunt disponibile.</div>');
+      }
+      if (hasAccess != null) {
         rows.push(
-          '<div class="vehicle-enrichment-row"><span>Date pasageri</span><strong class="' +
-            (passengerAge.stale ? "is-stale" : "") +
-            '">' +
-            escapeHtml(passengerAge.label) +
-            "</strong></div>"
+          vehicleApiRow(
+            "Accesibil",
+            hasAccess ? '<span class="access-icon">' + ACCESS_SVG + "</span>Da" : "Nu",
+            "vehicle-enrichment-access"
+          )
         );
       }
       return (
         '<div class="vehicle-enrichment">' +
-        '<div class="vehicle-enrichment-heading"><span>Detalii vehicul</span></div>' +
+        '<div class="vehicle-enrichment-heading"><span>Informații utile</span><span>' +
+        (mobi ? "STB + mo-bi" : "STB · fără mo-bi") +
+        "</span></div>" +
         rows.join("") +
-        '<div class="vehicle-enrichment-source">Sursă: mo-bi.ro</div>' +
         "</div>"
+      );
+    }
+
+    function vehicleApiDetailsHtml(vehicle) {
+      const mobi = vehicle && vehicle.mobi;
+      const ll = vehicleLatLng(vehicle);
+      const access = vehicleAccessValue(vehicle, null);
+      const requestDirection = vehicleRequestDirection(vehicle);
+      const mobiDirection = mobi && mobi.direction;
+      const matchLabels = {
+        id: "ID",
+        code: "cod flotă",
+        hardware: "ID hardware",
+        "id+code": "ID + cod",
+        "id+hardware": "ID + hardware",
+      };
+      const matchedBy = mobi && mobi.matchedBy ? matchLabels[mobi.matchedBy] || mobi.matchedBy : null;
+      const stbRows = [
+        vehicleApiRow("ID", vehicleDisplayValue(vehicleApiField(vehicle, "id", "id"))),
+        vehicleApiRow("Latitudine", vehicleDisplayCoordinate(ll && ll[0])),
+        vehicleApiRow("Longitudine", vehicleDisplayCoordinate(ll && ll[1])),
+        vehicleApiRow("Cod flotă", vehicleDisplayValue(vehicleApiField(vehicle, "code", "code"))),
+        vehicleApiRow("Tip transport", vehicleDisplayValue(vehicleApiField(vehicle, "transport_type", "transportType"))),
+        vehicleApiRow("Accesibil", access == null ? "—" : access ? "Da" : "Nu"),
+        vehicleApiRow("Direcție cerută", vehicleDisplayNumber(requestDirection)),
+      ];
+      const mobiRows = [
+        vehicleApiRow("Sursă", vehicleDisplayValue(mobi && mobi.source)),
+        vehicleApiRow("Placă", vehicleDisplayValue(mobi && mobi.licensePlate)),
+        vehicleApiRow("Pasageri la bord", vehicleDisplayNumber(mobi && mobi.passengerCount)),
+        vehicleApiRow("În urcări", vehicleDisplayNumber(mobi && mobi.boarded)),
+        vehicleApiRow("Coborâri", vehicleDisplayNumber(mobi && mobi.alighted)),
+        vehicleApiRow("Timestamp pasageri", vehicleDisplayTimestamp(mobi && mobi.passengerTimestamp)),
+        vehicleApiRow("Vârstă pasageri", vehicleDisplayAge(mobi && mobi.passengerAgeSeconds != null ? mobiAge(mobi.passengerTimestamp, mobi.passengerAgeSeconds) : null)),
+        vehicleApiRow("Timestamp poziție", vehicleDisplayTimestamp(mobi && mobi.positionTimestamp)),
+        vehicleApiRow("Vârstă poziție", vehicleDisplayAge(mobi && mobi.positionAgeSeconds != null ? mobiAge(mobi.positionTimestamp, mobi.positionAgeSeconds) : null)),
+        vehicleApiRow("Timestamp sursă", vehicleDisplayTimestamp(mobi && mobi.sourceTimestamp)),
+        vehicleApiRow("ID sursă", vehicleDisplayNumber(mobi && mobi.sourceId)),
+        vehicleApiRow("ID traseu", vehicleDisplayNumber(mobi && mobi.routeId)),
+        vehicleApiRow("Direcție mo-bi", vehicleDisplayNumber(mobiDirection)),
+        vehicleApiRow("Start cursă", vehicleDisplayTimestamp(mobi && mobi.tripStartTime)),
+        vehicleApiRow("Potrivire", vehicleDisplayValue(matchedBy)),
+      ];
+      return (
+        '<details class="vehicle-api-details">' +
+        '<summary><span>Toate datele API</span><span class="vehicle-api-count">22 câmpuri</span></summary>' +
+        '<div class="vehicle-api-groups">' +
+        '<section class="vehicle-api-group"><h3>STB · vehicul</h3>' + stbRows.join("") + "</section>" +
+        '<section class="vehicle-api-group"><h3>mo-bi.ro · detalii</h3>' + mobiRows.join("") + "</section>" +
+        "</div></details>"
       );
     }
 
     function vehiclePopupHtml(vehicle, label, fleet, kind, fill, ink, hasAccess) {
       const kindName = kindLabel(kind) || "Vehicul";
       const mobi = vehicle && vehicle.mobi;
-      const positionAge = mobi && mobi.positionTimestamp ? mobiAge(mobi.positionTimestamp) : null;
-      const positionLabel = positionAge && positionAge.stale ? "STARE VECHE" : "LIVE";
-      const positionClass = positionAge && positionAge.stale ? "is-stale" : "is-live";
-      const fleetText = fleet && fleet !== label ? " · Flotă #" + escapeHtml(fleet) : "";
-      const compactData = mobi
-        ? (mobi.licensePlate ? " · " + escapeHtml(String(mobi.licensePlate)) : "") +
-          " · " +
-          (mobi.passengerCount == null ? "pax —" : escapeHtml(String(mobi.passengerCount)) + " pax") +
-          (hasAccess ? " · accesibil" : "")
-        : "";
-      const access = hasAccess
-        ? '<span class="vehicle-popup-access"><span class="access-icon">' +
-          ACCESS_SVG +
-          "</span>Accesibil</span>"
-        : "";
+      const positionAge = mobi ? mobiAge(mobi.positionTimestamp, mobi.positionAgeSeconds) : null;
+      const positionState = !positionAge || positionAge.seconds == null ? "unknown" : positionAge.stale ? "stale" : "live";
+      const positionLabel = positionState === "live" ? "LIVE" : positionState === "stale" ? "VECHI" : "FĂRĂ POZIȚIE";
+      const positionClass = positionState === "live" ? "is-live" : positionState === "stale" ? "is-stale" : "is-unknown";
+      const vehicleIdValue = vehicleApiField(vehicle, "id", "id");
+      const codeValue = vehicleApiField(vehicle, "code", "code");
+      const vehicleId = vehicleIdValue != null ? String(vehicleIdValue) : "";
+      const code = codeValue != null ? String(codeValue) : "";
+      const identity = code ? "Flotă #" + code : vehicleId ? "ID " + vehicleId : "Identificator indisponibil";
+      const destination = vehicleDestination(vehicle) || "Destinație indisponibilă";
+      const access = vehicleAccessValue(vehicle, hasAccess);
       return (
-        '<div class="vehicle-popup" role="dialog" aria-label="Informații vehicul ' +
+        '<div id="vehicle-popup" class="vehicle-popup" role="dialog" aria-label="Informații vehicul ' +
         escapeHtml(label) +
         '">' +
         '<div class="vehicle-popup-header">' +
@@ -2300,10 +2517,8 @@
         "</span>" +
         '<div class="vehicle-popup-heading"><div class="vehicle-popup-title">' +
         escapeHtml(kindName) +
-        '</div><div class="vehicle-popup-subtitle">Linia ' +
-        escapeHtml(label) +
-        fleetText +
-        compactData +
+        '</div><div class="vehicle-popup-subtitle">Spre ' +
+        escapeHtml(destination) +
         "</div></div>" +
         '<span class="vehicle-popup-status ' +
         positionClass +
@@ -2311,86 +2526,167 @@
         positionLabel +
         "</span>" +
         "</div>" +
-        (access ? '<div class="vehicle-popup-meta">' + access + "</div>" : "") +
-        vehicleEnrichmentHtml(vehicle) +
+        '<div class="vehicle-popup-context"><div><span>VEHICUL</span><strong>' +
+        escapeHtml(identity) +
+        '</strong></div><div><span>DESTINAȚIE</span><strong>' +
+        escapeHtml(destination) +
+        "</strong></div></div>" +
+        vehicleEnrichmentHtml(vehicle, access) +
+        vehicleApiDetailsHtml(vehicle) +
         "</div>"
       );
     }
 
+    function setVehiclePopupLabels(popup) {
+      const apply = () => {
+        const element = popup && popup.getElement && popup.getElement();
+        const close = element && element.querySelector(".maplibregl-popup-close-button");
+        if (close) close.setAttribute("aria-label", "Închide informațiile vehiculului");
+      };
+      apply();
+      requestAnimationFrame(apply);
+    }
+
+    function vehicleMarkerKey(vehicle) {
+      const key = vehicleKey(vehicle);
+      return key ? key + ":" + String(vehicle.direction == null ? "" : vehicle.direction) : "";
+    }
+
+    function vehicleMarkerHtml(vehicle, label, fleet, kind, brg) {
+      return (
+        '<span class="vehicle-mark"><span class="vehicle-beacon"><span class="vehicle-icon' +
+        (brg != null ? " has-heading" : "") +
+        '"' +
+        (brg != null ? ' style="--veh-brg:' + brg.toFixed(1) + 'deg"' : "") +
+        ' data-veh-type="' +
+        escapeHtml(String(kind || "").toUpperCase()) +
+        '"><svg class="vehicle-arrow" viewBox="0 0 12 14" width="10" height="12"><polygon points="6,0 12,14 0,14" fill="currentColor"/></svg>' +
+        vehicleSvg(kind) +
+        '</span></span><span class="vehicle-code">' +
+        escapeHtml(label) +
+        "</span></span>"
+      );
+    }
+
+    function vehicleMarkerAria(vehicle, label, fleet, kind, hasAccess) {
+      const plate = vehicle && vehicle.mobi && vehicle.mobi.licensePlate ? ", placa " + vehicle.mobi.licensePlate : "";
+      return (
+        "Vehicul " +
+        label +
+        (fleet && fleet !== label ? " flotă " + fleet : "") +
+        (kind ? ", " + kindLabel(kind) : "") +
+        (hasAccess ? ", accesibil" : "") +
+        plate
+      );
+    }
+
+    function updateVehicleMarker(marker, vehicle, label, fleet, kind, fill, ink, hasAccess, brg, selected, openKey) {
+      const element = marker._vehicleElement;
+      const key = vehicleKey(vehicle);
+      const ll = vehicleLatLng(vehicle);
+      const popup = marker.getPopup();
+      const popupElement = popup && popup.getElement && popup.getElement();
+      const oldDetails = popupElement && popupElement.querySelector(".vehicle-api-details");
+      const detailsOpen = !!(oldDetails && oldDetails.open);
+      const oldBoard = popupElement && popupElement.querySelector(".vehicle-popup");
+      const scrollTop = oldBoard ? oldBoard.scrollTop : 0;
+      marker._vehicle = vehicle;
+      marker.setLngLat([ll[1], ll[0]]);
+      element.className = "vehicle-no" + (selected ? " selected" : "");
+      element.style.setProperty("--veh", fill);
+      element.style.setProperty("--veh-ink", ink);
+      element.style.setProperty("--veh-delay", vehicleAnimDelay(key));
+      element.setAttribute("aria-label", vehicleMarkerAria(vehicle, label, fleet, kind, hasAccess));
+      element.innerHTML = vehicleMarkerHtml(vehicle, label, fleet, kind, brg);
+      popup.setHTML(vehiclePopupHtml(vehicle, label, fleet, kind, fill, ink, hasAccess));
+      requestAnimationFrame(() => {
+        const nextElement = popup.getElement && popup.getElement();
+        const nextDetails = nextElement && nextElement.querySelector(".vehicle-api-details");
+        if (detailsOpen && nextDetails) nextDetails.open = true;
+        const nextBoard = nextElement && nextElement.querySelector(".vehicle-popup");
+        if (nextBoard) nextBoard.scrollTop = scrollTop;
+        setVehiclePopupLabels(popup);
+      });
+      if (openKey && key === openKey) {
+        if (!popup.isOpen()) marker.togglePopup();
+        requestAnimationFrame(() => keepVehiclePopupInView(popup));
+      }
+    }
+
     function plotVehicles(vehicles, color, opts) {
-      clearVehicles();
       const routeNo = (selectedLine && selectedLine.name) || "";
       const openKey = opts && opts.openKey;
+      const fill = cssColor(color);
+      const ink = inkOnHex(fill);
+      const activeKeys = new Set();
       (vehicles || []).forEach((v) => {
         const ll = vehicleLatLng(v);
-        if (!ll) return;
+        const markerKey = vehicleMarkerKey(v);
+        if (!ll || !markerKey || activeKeys.has(markerKey)) return;
         const fleet = v.code != null ? String(v.code) : vehicleKey(v) || "";
         const label = routeNo || fleet || "?";
         const kind = v.transport_type || v.transportType || "";
         const hasAccess = !!(v.has_disability || v.hasDisability);
         const key = vehicleKey(v);
         const selected = key && key === selectedVehicleKey;
-        const path = dirPaths[v.direction];
-        const brg = path ? bearingOnPath(ll[0], ll[1], path) : null;
-        const fill = cssColor(color);
-        const ink = inkOnHex(fill);
         const otherWay = v.direction != null && Number(v.direction) !== detailDir;
         if (otherWay) return;
-        const el = document.createElement("div");
-        el.className = "vehicle-no" + (selected ? " selected" : "");
-        el.style.setProperty("--veh", fill);
-        el.style.setProperty("--veh-ink", ink);
-        el.style.setProperty("--veh-delay", vehicleAnimDelay(key));
-        el.tabIndex = 0;
-        el.setAttribute("role", "button");
-        const vehicleMobi = v.mobi;
-        const plateAria = vehicleMobi && vehicleMobi.licensePlate ? ", placa " + vehicleMobi.licensePlate : "";
-        el.setAttribute(
-          "aria-label",
-          "Vehicul " +
-            label +
-            (fleet && fleet !== label ? " flotă " + fleet : "") +
-            (kind ? ", " + kindLabel(kind) : "") +
-            (hasAccess ? ", accesibil" : "") +
-            plateAria
-        );
-        el.innerHTML =
-          '<span class="vehicle-mark"><span class="vehicle-beacon"><span class="vehicle-icon' +
-          (brg != null ? " has-heading" : "") +
-          '"' +
-          (brg != null ? ' style="--veh-brg:' + brg.toFixed(1) + 'deg"' : "") +
-          ' data-veh-type="' + escapeHtml(String(kind || "").toUpperCase()) +
-          '"><svg class="vehicle-arrow" viewBox="0 0 12 14" width="10" height="12"><polygon points="6,0 12,14 0,14" fill="currentColor"/></svg>' +
-          vehicleSvg(kind) +
-          '</span></span><span class="vehicle-code">' +
-          escapeHtml(label) +
-          "</span></span>";
+        const path = dirPaths[v.direction];
+        const brg = path ? bearingOnPath(ll[0], ll[1], path) : null;
+        const existing = vehicleMarkerMap.get(markerKey);
+        if (existing) {
+          activeKeys.add(markerKey);
+          updateVehicleMarker(existing, v, label, fleet, kind, fill, ink, hasAccess, brg, selected, openKey);
+          return;
+        }
+        const element = document.createElement("div");
+        element.className = "vehicle-no" + (selected ? " selected" : "");
+        element.style.setProperty("--veh", fill);
+        element.style.setProperty("--veh-ink", ink);
+        element.style.setProperty("--veh-delay", vehicleAnimDelay(key));
+        element.tabIndex = 0;
+        element.setAttribute("role", "button");
+        element.setAttribute("aria-label", vehicleMarkerAria(v, label, fleet, kind, hasAccess));
+        element.innerHTML = vehicleMarkerHtml(v, label, fleet, kind, brg);
         const popup = new maplibregl.Popup({
           offset: 18,
           closeButton: true,
           closeOnMove: false,
           focusAfterOpen: false,
-          maxWidth: "300px",
+          maxWidth: "min(352px, calc(100vw - 16px))",
           className: "vehicle-popup-wrap",
         }).setHTML(vehiclePopupHtml(v, label, fleet, kind, fill, ink, hasAccess));
-        const m = new maplibregl.Marker({ element: el, anchor: "left", offset: [0, 0] })
+        const marker = new maplibregl.Marker({ element, anchor: "center", offset: [0, 0] })
           .setLngLat([ll[1], ll[0]])
           .setPopup(popup)
           .addTo(map);
-        m._vehKey = key;
-        el.addEventListener("click", (ev) => {
+        marker._vehKey = key;
+        setVehiclePopupLabels(popup);
+        marker._vehicleKey = markerKey;
+        marker._vehicleElement = element;
+        marker._vehicle = v;
+        element.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          showPathForVehicle(v);
+          showPathForVehicle(marker._vehicle);
         });
-        el.addEventListener("keydown", (ev) => {
+        element.addEventListener("keydown", (ev) => {
           if (ev.key !== "Enter" && ev.key !== " ") return;
           ev.preventDefault();
-          showPathForVehicle(v);
+          showPathForVehicle(marker._vehicle);
         });
-        vehicleMarkers.push(m);
-        requestAnimationFrame(() => keepVehiclePopupInView(popup));
-        if (openKey && key === openKey) m.togglePopup();
+        vehicleMarkerMap.set(markerKey, marker);
+        activeKeys.add(markerKey);
+        if (openKey && key === openKey) {
+          marker.togglePopup();
+          requestAnimationFrame(() => keepVehiclePopupInView(popup));
+        }
       });
+      for (const [key, marker] of vehicleMarkerMap) {
+        if (activeKeys.has(key)) continue;
+        marker.remove();
+        vehicleMarkerMap.delete(key);
+      }
+      vehicleMarkers = Array.from(vehicleMarkerMap.values());
     }
 
     async function loadDirPaths(lineId) {
@@ -2449,7 +2745,12 @@
       const line = selectedLine;
       if (!line) return;
       selectedVehicleKey = vehicleKey(v);
+      if (isCompactLayout() && sheetSnaps.length) setSheetIndex(sheetSnaps.length - 1, true);
       plotVehicles(lastPlottedVehicles, routeColor(line), { openKey: selectedVehicleKey });
+      window.setTimeout(() => {
+        const marker = vehicleMarkerMap.get(vehicleMarkerKey(v));
+        if (marker) keepVehiclePopupInView(marker.getPopup());
+      }, 380);
     }
 
     async function refreshVehicles(line) {
@@ -2492,6 +2793,7 @@
     }
 
     function clearRoute() {
+      stopRouteFlow();
       setSourceData("route", emptyFC());
     }
 
@@ -2518,16 +2820,23 @@
     let routeFlowLast = 0;
     let routeFlowStep = 0;
 
+    function stopRouteFlow() {
+      if (routeFlowRAF != null) cancelAnimationFrame(routeFlowRAF);
+      routeFlowRAF = null;
+    }
+
     function startRouteFlow() {
-      if (routeFlowRAF != null || prefersReducedMotion()) return;
+      if (routeFlowRAF != null || prefersReducedMotion() || selectedLineId == null) return;
       const tick = (ts) => {
+        if (selectedLineId == null || !map || !map.getLayer("route-flow")) {
+          stopRouteFlow();
+          return;
+        }
         routeFlowRAF = requestAnimationFrame(tick);
         if (ts - routeFlowLast < 55) return;
         routeFlowLast = ts;
         routeFlowStep = (routeFlowStep + 1) % ROUTE_FLOW_DASHES.length;
-        if (map && map.getLayer("route-flow")) {
-          map.setPaintProperty("route-flow", "line-dasharray", ROUTE_FLOW_DASHES[routeFlowStep]);
-        }
+        map.setPaintProperty("route-flow", "line-dasharray", ROUTE_FLOW_DASHES[routeFlowStep]);
       };
       routeFlowRAF = requestAnimationFrame(tick);
     }
@@ -2553,7 +2862,11 @@
       if (map.getLayer("route-line")) {
         map.setPaintProperty("route-line", "line-color", stroke);
       }
-      if (!features.length) return false;
+      if (!features.length) {
+        stopRouteFlow();
+        return false;
+      }
+      startRouteFlow();
       if (!(opts && opts.fit === false)) {
         fitMapBounds(boundsFromLngLats(lngLats), 0.12);
       }
@@ -2643,6 +2956,7 @@
         setLinesListMessage("Apropie la " + MAP_ZOOM.minimum + "+ pentru a încărca liniile din apropiere.");
         return;
       }
+      if (selectedLineId != null) return;
       const gen = ++fetchGen;
       const path = "/lines/v2/home/stops/" + parseBoundsPath(map.getBounds());
       if (!selectedLineId)       setStatus("Se încarcă stațiile…");
@@ -2659,6 +2973,7 @@
           statusEl.innerHTML =
             '<span class="count">' + n + "</span> " + countUnit(n, "stație", "stații") + " în apropiere";
           statusEl.className = "hud-status ok";
+          setFeedState("ok");
         }
         if (selectedLineId == null) await loadNearbyLines(lastStops);
       } catch (e) {
@@ -2719,10 +3034,13 @@
 
     async function recenterOnUser() {
       const btn = document.querySelector(".map-locate");
+      const status = document.getElementById("map-rail-status");
+      let resultMessage = "Locația a fost actualizată.";
       if (btn) {
-        btn.disabled = true;
+        btn.setAttribute("aria-disabled", "true");
         btn.setAttribute("aria-busy", "true");
       }
+      if (status) status.textContent = "Se localizează…";
       if (selectedLineId == null) setStatus("Se localizează…");
       try {
         const loc = await locate();
@@ -2733,15 +3051,58 @@
           zoom: Math.max(MAP_ZOOM.minimum, MAP_ZOOM.initial - MAP_ZOOM.userLocationReduction),
         });
         console.log("User location zoom:", map.getZoom());
-        if (loc.fallback && selectedLineId == null) {
-          setStatus("Fallback locație: centrul București (" + loc.reason + ")", "warn");
+        if (loc.fallback) {
+          resultMessage = "Locația nu este disponibilă. Folosim centrul București.";
+          if (selectedLineId == null) {
+            setStatus("Fallback locație: centrul București (" + loc.reason + ")", "warn");
+          }
         }
+      } catch (err) {
+        resultMessage = "Locația nu a putut fi actualizată.";
+        if (selectedLineId == null) setStatus(resultMessage, "err");
+        console.error("Location recenter failed", err);
       } finally {
         if (btn) {
-          btn.disabled = false;
+          btn.removeAttribute("aria-disabled");
           btn.removeAttribute("aria-busy");
         }
+        if (status) status.textContent = resultMessage;
       }
+    }
+
+    let attributionOpenPreference = null;
+
+    function setupAttributionControl() {
+      const details = map && map.getContainer && map.getContainer().querySelector(".maplibregl-ctrl-attrib");
+      const button = details && details.querySelector(".maplibregl-ctrl-attrib-button");
+      if (!details || !button) return;
+      const container = details.closest(".maplibregl-ctrl-bottom-right");
+      const label = "Informații despre hartă";
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const open = !details.open;
+        details.open = open;
+        details.classList.toggle("maplibregl-compact-show", open);
+        if (container) container.classList.toggle("is-attribution-open", open);
+        attributionOpenPreference = open;
+      }, true);
+      details.addEventListener("toggle", () => {
+        if (container) container.classList.toggle("is-attribution-open", details.open);
+      });
+      collapseAttribution();
+    }
+
+    function settleAttributionControl() {
+      const details = map && map.getContainer && map.getContainer().querySelector(".maplibregl-ctrl-attrib");
+      if (!details) return;
+      const open = attributionOpenPreference === true;
+      if (details.open !== open) details.open = open;
+      details.classList.toggle("maplibregl-compact-show", open);
+      const container = details.closest(".maplibregl-ctrl-bottom-right");
+      if (container) container.classList.toggle("is-attribution-open", open);
     }
 
     function collapseAttribution() {
@@ -2752,10 +3113,6 @@
       if ("open" in el) el.open = false;
     }
 
-    // One rail, four actions, one 44px target each. The zoom buttons know
-    // their own limits so they switch off at the ends of the range instead of
-    // silently doing nothing; locate keeps the blue fill and reports a busy
-    // state while the browser is locating.
     function railButton(className, label, onClick) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -2765,6 +3122,7 @@
       btn.innerHTML = '<span class="map-rail-icon" aria-hidden="true"></span>';
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
+        if (btn.disabled || btn.getAttribute("aria-disabled") === "true") return;
         onClick();
       });
       return btn;
@@ -2777,7 +3135,7 @@
     function MapRailControl() {}
     MapRailControl.prototype.onAdd = function (mapInstance) {
       const wrap = document.createElement("div");
-      wrap.className = "maplibregl-ctrl maplibregl-ctrl-group map-rail";
+      wrap.className = "maplibregl-ctrl map-rail";
       wrap.setAttribute("role", "group");
       wrap.setAttribute("aria-label", "Controale hartă");
 
@@ -2790,28 +3148,33 @@
       const locateBtn = railButton("map-locate", "Locația mea", () => {
         recenterOnUser();
       });
-      const northBtn = railButton("map-north", "Resetează nordul", () => {
-        mapInstance.easeTo({ bearing: 0, pitch: 0, duration: zoomDuration() });
-      });
-      const divider = document.createElement("span");
-      divider.className = "map-rail-divider";
-      divider.setAttribute("aria-hidden", "true");
+      const zoomGroup = document.createElement("div");
+      zoomGroup.className = "map-rail-zoom";
+      zoomGroup.setAttribute("role", "group");
+      zoomGroup.setAttribute("aria-label", "Nivelul de zoom");
+      const status = document.createElement("span");
+      status.id = "map-rail-status";
+      status.className = "map-rail-status";
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      locateBtn.setAttribute("aria-describedby", status.id);
 
       const syncZoomState = () => {
         const zoom = mapInstance.getZoom();
-        zoomIn.disabled = zoom >= mapInstance.getMaxZoom() - 0.01;
-        zoomOut.disabled = zoom <= mapInstance.getMinZoom() + 0.01;
+        const zoomInDisabled = zoom >= mapInstance.getMaxZoom() - 0.01;
+        const zoomOutDisabled = zoom <= mapInstance.getMinZoom() + 0.01;
+        zoomIn.setAttribute("aria-disabled", String(zoomInDisabled));
+        zoomOut.setAttribute("aria-disabled", String(zoomOutDisabled));
+        zoomIn.tabIndex = zoomInDisabled ? -1 : 0;
+        zoomOut.tabIndex = zoomOutDisabled ? -1 : 0;
       };
       this._map = mapInstance;
       this._syncZoomState = syncZoomState;
       mapInstance.on("zoom", syncZoomState);
       mapInstance.on("zoomend", syncZoomState);
 
-      wrap.appendChild(locateBtn);
-      wrap.appendChild(northBtn);
-      wrap.appendChild(divider);
-      wrap.appendChild(zoomIn);
-      wrap.appendChild(zoomOut);
+      zoomGroup.append(zoomIn, zoomOut);
+      wrap.append(locateBtn, zoomGroup, status);
       this._container = wrap;
       syncZoomState();
       return wrap;
@@ -2829,16 +3192,130 @@
       this._syncZoomState = null;
     };
 
+    function activeMapStyle() {
+      return MAP_STYLES[mapStyleId] || MAP_STYLES.dark;
+    }
+
+    function restoreMapStylePreference() {
+      try {
+        const saved = localStorage.getItem(LS_MAP_STYLE);
+        if (saved && MAP_STYLES[saved]) mapStyleId = saved;
+      } catch (err) {}
+    }
+
+    function storeMapStylePreference() {
+      try {
+        localStorage.setItem(LS_MAP_STYLE, mapStyleId);
+      } catch (err) {}
+    }
+
+    function waitForMapStyle(url) {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          map.off("style.load", onLoad);
+          if (error) reject(error);
+          else resolve();
+        };
+        const onLoad = () => finish();
+        const timer = setTimeout(() => finish(new Error("Map style timeout")), 20000);
+        map.on("style.load", onLoad);
+        try {
+          map.setStyle(url, { diff: false });
+        } catch (err) {
+          finish(err);
+        }
+      });
+    }
+
+    async function loadActiveMapStyle() {
+      const style = activeMapStyle();
+      await waitForMapStyle(style.url);
+      if (style.customizeBase) applyMapTheme(style.overlay);
+      ensureOverlayLayers();
+      map.once("idle", settleAttributionControl);
+    }
+
+    async function switchMapStyle() {
+      if (!map || mapStyleLoading) return;
+      const previousId = mapStyleId;
+      mapStyleId = mapStyleId === "dark" ? "light" : "dark";
+      mapStyleLoading = true;
+      overlaysReady = false;
+      if (mapStyleControl) mapStyleControl.sync();
+      if (mapStyleControl) mapStyleControl.announce("Se schimbă stilul hărții");
+      try {
+        await loadActiveMapStyle();
+        storeMapStylePreference();
+        if (mapStyleControl) mapStyleControl.announce("Stilul hărții: " + activeMapStyle().label);
+      } catch (err) {
+        mapStyleId = previousId;
+        overlaysReady = false;
+        try {
+          await loadActiveMapStyle();
+        } catch (restoreError) {}
+        if (mapStyleControl) mapStyleControl.announce("Stilul hărții nu a putut fi schimbat");
+      } finally {
+        mapStyleLoading = false;
+        if (mapStyleControl) mapStyleControl.sync();
+      }
+    }
+
+    function MapStyleControl() {}
+    MapStyleControl.prototype.onAdd = function () {
+      const wrap = document.createElement("div");
+      wrap.className = "maplibregl-ctrl map-rail map-style-control";
+      wrap.setAttribute("role", "group");
+      wrap.setAttribute("aria-label", "Stilul hărții");
+      const button = railButton("map-style-button", "Hartă clară", () => switchMapStyle());
+      button.setAttribute("aria-pressed", "false");
+      const status = document.createElement("span");
+      status.className = "map-style-status";
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      wrap.append(button, status);
+      this._container = wrap;
+      this._button = button;
+      this._status = status;
+      this.sync();
+      return wrap;
+    };
+    MapStyleControl.prototype.onRemove = function () {
+      if (this._container && this._container.parentNode) {
+        this._container.parentNode.removeChild(this._container);
+      }
+      this._container = null;
+      this._button = null;
+      this._status = null;
+    };
+    MapStyleControl.prototype.sync = function () {
+      if (!this._button) return;
+      const light = mapStyleId === "light";
+      this._button.disabled = mapStyleLoading;
+      this._button.setAttribute("aria-pressed", String(light));
+      this._button.setAttribute("aria-label", "Hartă " + activeMapStyle().label.toLowerCase());
+      this._button.title = light ? "Folosește stilul întunecat" : "Folosește stilul clar";
+      if (mapStyleLoading) this._button.setAttribute("aria-busy", "true");
+      else this._button.removeAttribute("aria-busy");
+    };
+    MapStyleControl.prototype.announce = function (message) {
+      if (this._status) this._status.textContent = message;
+    };
+
     function ensureOverlayLayers() {
       if (overlaysReady) return;
-      map.addSource("route", { type: "geojson", data: emptyFC() });
+      const theme = activeMapStyle().overlay;
+      map.addSource("route", { type: "geojson", data: mapSourceData.get("route") || emptyFC() });
       map.addLayer({
         id: "route-casing",
         type: "line",
         source: "route",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": MAP_THEME.routeCasing,
+          "line-color": theme.routeCasing,
           "line-width": ["case", ["==", ["get", "active"], 1], 7, 4],
           "line-opacity": ["case", ["==", ["get", "active"], 1], 0.92, 0.35],
         },
@@ -2849,7 +3326,7 @@
         source: "route",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": MAP_THEME.routeFallback,
+          "line-color": theme.routeFallback,
           "line-width": ["case", ["==", ["get", "active"], 1], 4, 2.5],
           "line-opacity": ["case", ["==", ["get", "active"], 1], 0.94, 0.28],
         },
@@ -2861,21 +3338,20 @@
         filter: ["==", ["get", "active"], 1],
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": MAP_THEME.routeCasing,
+          "line-color": theme.routeCasing,
           "line-width": 2.5,
           "line-opacity": 0.7,
           "line-dasharray": [0, 4, 3],
         },
       });
-      startRouteFlow();
-      map.addSource("stops", { type: "geojson", data: emptyFC() });
+      map.addSource("stops", { type: "geojson", data: mapSourceData.get("stops") || emptyFC() });
       map.addLayer({
         id: "stops-hit",
         type: "circle",
         source: "stops",
         paint: {
           "circle-radius": 18,
-          "circle-color": MAP_THEME.land,
+          "circle-color": theme.land,
           "circle-opacity": 0,
         },
       });
@@ -2894,8 +3370,8 @@
           "text-optional": true,
         },
         paint: {
-          "text-color": MAP_THEME.label,
-          "text-halo-color": MAP_THEME.halo,
+          "text-color": theme.label,
+          "text-halo-color": theme.halo,
           "text-halo-width": 1.5,
         },
       });
@@ -2905,27 +3381,27 @@
         source: "stops",
         paint: {
           "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 3.25, 17, 5.5],
-          "circle-color": MAP_THEME.stop,
+          "circle-color": theme.stop,
           "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 0.8, 14, 1.2, 17, 2],
-          "circle-stroke-color": MAP_THEME.routeCasing,
+          "circle-stroke-color": theme.routeCasing,
           "circle-opacity": ["interpolate", ["linear"], ["zoom"], 10, 0.42, 14, 0.68, 17, 0.95],
           "circle-stroke-opacity": ["interpolate", ["linear"], ["zoom"], 10, 0.32, 14, 0.55, 17, 0.95],
         },
       });
-      map.addSource("user", { type: "geojson", data: emptyFC() });
+      map.addSource("user", { type: "geojson", data: mapSourceData.get("user") || emptyFC() });
       map.addLayer({
         id: "user-accuracy",
         type: "fill",
         source: "user",
         filter: ["==", ["get", "kind"], "accuracy"],
-        paint: { "fill-color": MAP_THEME.user, "fill-opacity": 0.12 },
+        paint: { "fill-color": theme.user, "fill-opacity": 0.12 },
       });
       map.addLayer({
         id: "user-accuracy-line",
         type: "line",
         source: "user",
         filter: ["==", ["get", "kind"], "accuracy"],
-        paint: { "line-color": MAP_THEME.user, "line-width": 1.5, "line-opacity": 0.72 },
+        paint: { "line-color": theme.user, "line-width": 1.5, "line-opacity": 0.72 },
       });
       map.addLayer({
         id: "user-dot",
@@ -2934,38 +3410,41 @@
         filter: ["==", ["get", "kind"], "you"],
         paint: {
           "circle-radius": 7,
-          "circle-color": MAP_THEME.routeCasing,
+          "circle-color": theme.routeCasing,
           "circle-stroke-width": 3,
-          "circle-stroke-color": MAP_THEME.user,
+          "circle-stroke-color": theme.user,
         },
       });
-      map.on("mouseenter", "stops-hit", () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", "stops-hit", () => {
-        map.getCanvas().style.cursor = "";
-      });
-      map.on("click", (e) => {
-        const hits = map.queryRenderedFeatures(e.point, { layers: ["stops-hit", "stops-fill", "user-dot"] });
-        if (!hits.length) {
-          closeStopPopup();
-          return;
-        }
-        const hit = hits[0];
-        if (hit.layer.id === "user-dot") {
-          new maplibregl.Popup({ offset: 12, closeButton: false })
-            .setLngLat(e.lngLat)
-            .setText("Tu")
-            .addTo(map);
-          return;
-        }
-        try {
-          const s = JSON.parse(hit.properties.payload);
-          openStopPopup(s, e.lngLat);
-        } catch (err) {
-          console.error(err);
-        }
-      });
+      if (!overlayHandlersReady) {
+        map.on("mouseenter", "stops-hit", () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", "stops-hit", () => {
+          map.getCanvas().style.cursor = "";
+        });
+        map.on("click", (e) => {
+          const hits = map.queryRenderedFeatures(e.point, { layers: ["stops-hit", "stops-fill", "user-dot"] });
+          if (!hits.length) {
+            closeStopPopup();
+            return;
+          }
+          const hit = hits[0];
+          if (hit.layer.id === "user-dot") {
+            new maplibregl.Popup({ offset: 12, closeButton: false })
+              .setLngLat(e.lngLat)
+              .setText("Tu")
+              .addTo(map);
+            return;
+          }
+          try {
+            const s = JSON.parse(hit.properties.payload);
+            openStopPopup(s, e.lngLat);
+          } catch (err) {
+            console.error(err);
+          }
+        });
+        overlayHandlersReady = true;
+      }
       overlaysReady = true;
     }
 
@@ -2978,13 +3457,14 @@
 
     async function boot() {
       clearLegacyAuth();
+      restoreMapStylePreference();
       renderChips();
       startClock();
       setupSheet();
 
       map = new maplibregl.Map({
         container: "map",
-        style: "https://tiles.openfreemap.org/styles/dark",
+        style: activeMapStyle().url,
         center: [CITY.lng, CITY.lat],
         zoom: MAP_ZOOM.initial,
         minZoom: MAP_ZOOM.minimum,
@@ -3005,11 +3485,14 @@
       if (map.touchPitch) map.touchPitch.disable();
       if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
       map.addControl(new MapRailControl(), "top-right");
+      mapStyleControl = new MapStyleControl();
+      map.addControl(mapStyleControl, "bottom-right");
       map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+      setupAttributionControl();
       await whenMapReady();
-      applyMapTheme();
-      collapseAttribution();
-      map.once("idle", collapseAttribution);
+      if (activeMapStyle().customizeBase) applyMapTheme(activeMapStyle().overlay);
+      settleAttributionControl();
+      map.once("idle", settleAttributionControl);
       ensureOverlayLayers();
       map.resize();
       syncMapPadding();

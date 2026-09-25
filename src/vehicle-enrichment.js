@@ -168,10 +168,10 @@ function createVehicleEnricher(options) {
   let lastAttemptAt = 0;
   let inFlight = null;
 
-  async function getIndex() {
+  function prime() {
     const now = Date.now();
-    if (lastAttemptAt && now - lastAttemptAt < ttlMs) return index;
     if (inFlight) return inFlight;
+    if (lastAttemptAt && now - lastAttemptAt < ttlMs) return Promise.resolve(index);
     inFlight = Promise.resolve()
       .then(() => requestJson(url, timeoutMs))
       .then((rows) => {
@@ -193,15 +193,15 @@ function createVehicleEnricher(options) {
     return inFlight;
   }
 
-  async function enrichVehicleResponse(payload, pathname) {
+  function enrichVehicleResponse(payload, pathname) {
     if (!VEHICLE_PATH_RE.test(String(pathname || "").split("?")[0])) return payload;
     if (!payload || !Array.isArray(payload.vehicles)) return payload;
-    let currentIndex;
-    try {
-      currentIndex = await getIndex();
-    } catch (err) {
+    if (!fetchedAt) {
+      prime();
       return payload;
     }
+    prime();
+    const currentIndex = index;
     const now = Date.now();
     return {
       ...payload,
@@ -216,7 +216,7 @@ function createVehicleEnricher(options) {
     };
   }
 
-  return { enrichVehicleResponse };
+  return { enrichVehicleResponse, prime };
 }
 
 module.exports = { createVehicleEnricher, normalize: { identityKey, plateKey } };

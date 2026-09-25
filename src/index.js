@@ -56,6 +56,7 @@ export default {
         staleTtlMs: env.MOBI_STALE_TTL_MS,
         timeoutMs: env.MOBI_TIMEOUT_MS,
       });
+      vehicleEnricher.prime();
     }
 
     if (url.pathname.startsWith(PROXY_PATH + "/")) {

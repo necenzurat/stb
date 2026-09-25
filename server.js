@@ -24,6 +24,7 @@ const vehicleEnricher = createVehicleEnricher({
   staleTtlMs: process.env.MOBI_STALE_TTL_MS,
   timeoutMs: process.env.MOBI_TIMEOUT_MS,
 });
+vehicleEnricher.prime();
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
